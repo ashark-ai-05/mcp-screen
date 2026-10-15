@@ -6,7 +6,7 @@
 
 Charts, tables, MCP Apps, visual questions and a live map of what your agents are doing, on a local canvas next to your terminal. One command.
 
-[![License: MIT](https://img.shields.io/badge/license-MIT-7c9cff.svg)](LICENSE) [![MCP server](https://img.shields.io/badge/MCP-server-7c6cff.svg)](https://modelcontextprotocol.io) [![MCP Apps](https://img.shields.io/badge/MCP%20Apps-supported-a5b8ff.svg)](https://github.com/modelcontextprotocol/ext-apps) [![Node ≥ 20](https://img.shields.io/badge/node-%E2%89%A520-3c873a.svg)](package.json)
+[![CI](https://github.com/ashark-ai-05/mcp-screen/actions/workflows/ci.yml/badge.svg)](https://github.com/ashark-ai-05/mcp-screen/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/license-MIT-7c9cff.svg)](LICENSE) [![MCP server](https://img.shields.io/badge/MCP-server-7c6cff.svg)](https://modelcontextprotocol.io) [![MCP Apps](https://img.shields.io/badge/MCP%20Apps-supported-a5b8ff.svg)](https://github.com/modelcontextprotocol/ext-apps) [![Node ≥ 20](https://img.shields.io/badge/node-%E2%89%A520-3c873a.svg)](package.json)
 
 ```bash
 claude mcp add screen -- npx mcp-screen
