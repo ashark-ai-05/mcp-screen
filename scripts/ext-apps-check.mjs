@@ -1,0 +1,41 @@
+#!/usr/bin/env node
+// Interop check against the official ext-apps example server (published on npm).
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { chromium } from 'playwright';
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const PORT = 4792;
+const env = { ...process.env, MCP_SCREEN_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'mcps-x-')), MCP_SCREEN_NO_OPEN: '1' };
+const client = new Client({ name: 'interop', version: '1' });
+await client.connect(new StdioClientTransport({ command: process.execPath, args: [path.join(ROOT, 'dist/cli.js'), 'wrap', '--port', String(PORT), '--', 'npx', '-y', '@modelcontextprotocol/server-basic-vanillajs', '--stdio'], env, stderr: 'inherit' }));
+const { tools } = await client.listTools();
+const ui = tools.find((t) => t._meta?.ui?.resourceUri || t._meta?.['ui/resourceUri']);
+console.log('upstream UI tool:', ui?.name, JSON.stringify(ui?._meta));
+const r = await client.callTool({ name: ui.name, arguments: {} });
+console.log('result:', JSON.stringify(r.content).slice(0, 300));
+const browser = await chromium.launch();
+const page = await browser.newPage({ viewport: { width: 1200, height: 800 }, deviceScaleFactor: 2 });
+const logs = [];
+page.on('console', (m) => logs.push(m.text()));
+await page.goto(`http://127.0.0.1:${PORT}`);
+await page.waitForSelector('iframe.app-frame');
+await new Promise((r) => setTimeout(r, 4000));
+const text = await page.frameLocator('iframe.app-frame').locator('body').innerText().catch((e) => `ERR ${e.message}`);
+console.log('frame text:', text.slice(0, 400));
+const f = page.frameLocator('iframe.app-frame');
+const before = await f.locator('body').innerText();
+await new Promise((r) => setTimeout(r, 1100));
+await f.locator('button', { hasText: 'Get Server Time' }).click();
+await new Promise((r) => setTimeout(r, 1500));
+const after = await f.locator('body').innerText();
+const ts = (t) => /\d{4}-\d\d-\d\dT[\d:.]+Z/.exec(t)?.[0];
+console.log(`tools/call from app via bridge: ${ts(before)} -> ${ts(after)} ${ts(before) !== ts(after) ? 'PASS' : 'FAIL'}`);
+await page.screenshot({ path: path.join(ROOT, 'screenshots/6-ext-apps-basic-server.png') });
+console.log('console:', logs.slice(0, 30).join('\n'));
+await browser.close();
+await client.close();

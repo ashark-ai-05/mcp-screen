@@ -134,7 +134,7 @@ svg.chart .grid-l { stroke: var(--line); }
 .col-head .br { color: var(--muted); font-size: 12px; }
 .agent-group { margin-bottom: 14px; }
 .agent-label { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); margin: 0 4px 8px; }
-.chip { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--text); padding: 2px 9px; border-radius: 99px; background: var(--panel-2); border: 1px solid var(--line); }
+.chip { white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--text); padding: 2px 9px; border-radius: 99px; background: var(--panel-2); border: 1px solid var(--line); }
 .chip .sw { width: 8px; height: 8px; border-radius: 50%; }
 .rep { background: linear-gradient(180deg, var(--panel-2), var(--panel)); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; margin-bottom: 10px; animation: drop .4s cubic-bezier(.2,.9,.3,1.2); }
 .rep-top { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--muted); margin-bottom: 8px; }
@@ -174,3 +174,5 @@ svg.map .node .hits { font-size: 10px; }
 .feed .path { color: var(--muted); font-family: ui-monospace, Menlo, monospace; font-size: 11px; word-break: break-all; }
 .unmapped { font-size: 12px; color: var(--warn); }
 .unmapped code { display: block; color: var(--muted); font-size: 11px; }
+.filter { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--accent); background: rgba(124,156,255,.08); border-radius: 8px; padding: 4px 6px 4px 10px; margin-bottom: 6px; }
+.filter .btn { margin-left: auto; padding: 2px 8px; }

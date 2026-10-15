@@ -102,19 +102,21 @@
         return sort.asc ? c : -c;
       });
     const selIdx = w.selection && typeof w.selection.rowIndex === 'number' ? w.selection.rowIndex : -1;
-    return h('table', { class: 't' },
+    if (filter) body = body.filter(({ r }) => r.some((cell) => String(cell) === String(filter.value)));
+    const bar = filter ? h('div', { class: 'filter' }, `filtered by ${filter.value} · ${body.length} of ${rows.length} rows`,
+      h('button', { class: 'btn ghost', onclick: () => select(linked, null) }, 'clear')) : null;
+    return h('div', {}, bar, h('table', { class: 't' },
       h('thead', {}, h('tr', {}, columns.map((c, ci) =>
         h('th', {
           class: sort.col === ci ? `sorted${sort.asc ? ' asc' : ''}` : '',
           onclick: () => { state.tableSort.set(w.id, { col: ci, asc: sort.col === ci ? !sort.asc : false }); rerender(w.id); },
         }, c)))),
       h('tbody', {}, body.map(({ r, i }) => {
-        const dim = filter && !r.some((cell) => String(cell) === String(filter.value));
         return h('tr', {
-          class: (i === selIdx ? 'sel' : '') + (dim ? ' dim' : ''),
+          class: i === selIdx ? 'sel' : '',
           onclick: () => select(w, { rowIndex: i, row: Object.fromEntries(columns.map((c, ci) => [c, r[ci]])) }),
         }, r.map((cell) => h('td', {}, cell == null ? '' : String(cell))));
-      })));
+      }))));
   }
 
   function renderChart(w) {
@@ -208,7 +210,7 @@
     }
     const el = h('article', {
       class: `card${w.kind === 'mcp-app' ? ' app' : ''}`, 'data-id': w.id,
-      style: { gridColumn: `span ${w.w}`, gridRow: `span ${w.h}` },
+      style: { gridColumn: `span ${w.w}`, gridRow: `span ${w.status === 'needs-approval' ? Math.max(w.h, 2) : w.h}` },
     },
       h('div', { class: 'card-head' },
         h('span', { class: 'card-title', title: w.title }, w.title),
@@ -233,9 +235,11 @@
   function renderCanvas() {
     const widgets = [...state.widgets.values()].filter((w) => w.kind !== 'livemap' || true);
     document.getElementById('count-canvas').textContent = widgets.length ? String(widgets.length) : '';
-    // Keep iframes alive: reuse existing cards for mcp-app widgets.
-    const keep = new Map([...grid.querySelectorAll('.card.app')].map((c) => [c.dataset.id, c]));
-    grid.replaceChildren();
+    // Keyed reconcile. Cards are never re-parented (moving an iframe in the DOM reloads it and
+    // loses the MCP App's state); visual order comes from CSS `order` instead.
+    const existing = new Map([...grid.querySelectorAll('.card')].map((c) => [c.dataset.id, c]));
+    grid.querySelector('.empty')?.remove();
+    for (const [id, c] of existing) if (!state.widgets.has(id)) { c.remove(); frames.delete(id); }
     if (!widgets.length) {
       grid.append(h('div', { class: 'empty' },
         h('h2', {}, 'Your agent’s screen is ready'),
@@ -243,23 +247,26 @@
         h('p', {}, 'Tools: place_widget · update_widget · read_widget · read_canvas · post_report')));
       return;
     }
-    for (const w of widgets) {
-      const existing = keep.get(w.id);
-      if (existing && existing.dataset.v === w.updatedAt) grid.append(existing);
-      else {
-        const c = card(w);
-        c.dataset.v = w.updatedAt;
-        grid.append(c);
+    widgets.forEach((w, i) => {
+      let c = existing.get(w.id);
+      if (!c || (c.dataset.v !== w.updatedAt && w.kind !== 'mcp-app')) {
+        const next = card(w);
+        next.dataset.v = w.updatedAt;
+        if (c) { next.style.animation = 'none'; c.replaceWith(next); } else grid.append(next);
+        c = next;
       }
-    }
+      c.style.order = String(i);
+    });
   }
   function rerender(id) {
     const w = state.widgets.get(id);
     const old = grid.querySelector(`.card[data-id="${CSS.escape(id)}"]`);
     if (!w || !old) return renderAll();
+    if (w.kind === 'mcp-app') return; // never rebuild a live app frame
     const c = card(w);
     c.dataset.v = w.updatedAt;
     c.style.animation = 'none';
+    c.style.order = old.style.order;
     old.replaceWith(c);
   }
 
@@ -344,7 +351,7 @@
         s('title', {}, `${n.label}\n${n.globs.join('\n')}${n.description ? `\n\n${n.description}` : ''}`),
         s('rect', { width: NW, height: NH }),
         s('text', { class: 'lbl', x: 14, y: 24 }, n.label),
-        s('text', { class: 'gl', x: 14, y: 42 }, n.globs.join(', ').slice(0, 26)));
+        s('text', { class: 'gl', x: 14, y: 42 }, ((g) => (g.length > 25 ? `${g.slice(0, 24)}…` : g))(n.globs.join(', '))));
       const agents = [...new Set(hot.map((x) => x.agent))];
       agents.forEach((a, i) => g.append(s('circle', { cx: NW - 14 - i * 12, cy: 14, r: 4.5, fill: agentColor(a) })));
       svg.append(g);
@@ -405,7 +412,7 @@
             hostContext: {
               theme: 'light', displayMode: 'inline', availableDisplayModes: ['inline'], platform: 'desktop',
               containerDimensions: { width: Math.round(rect.width), maxHeight: Math.round(rect.height) },
-              toolInfo: { tool: { name: w.data.toolName } },
+              ...(w.data.toolDef ? { toolInfo: { tool: w.data.toolDef } } : {}),
               locale: navigator.language, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
             },
           });

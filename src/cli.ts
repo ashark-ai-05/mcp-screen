@@ -36,6 +36,17 @@ function openBrowser(url: string): void {
   }
 }
 
+/** When the agent goes away (stdin closes) shut down, so the canvas port doesn't linger. */
+function exitWithParent(hub: Hub | null): void {
+  const bye = (): void => {
+    void (hub ? hub.close() : Promise.resolve()).finally(() => process.exit(0));
+  };
+  process.stdin.on('end', bye);
+  process.stdin.on('close', bye);
+  process.on('SIGINT', bye);
+  process.on('SIGTERM', bye);
+}
+
 /** Start the hub, or attach to one another session already started. */
 async function getApi(port: number, open: boolean): Promise<{ api: ScreenApi; hub: Hub | null }> {
   try {
@@ -94,12 +105,14 @@ async function main(argv: string[]): Promise<void> {
       const { api, hub } = await getApi(port, open);
       const server = await runWrap(rest, api, hub);
       await server.connect(new StdioServerTransport());
+      exitWithParent(hub);
       log(`wrapping: ${rest.join(' ')}`);
       return;
     }
     case undefined: {
-      const { api } = await getApi(port, open);
+      const { api, hub } = await getApi(port, open);
       await createScreenServer(api).connect(new StdioServerTransport());
+      exitWithParent(hub);
       return;
     }
     default:

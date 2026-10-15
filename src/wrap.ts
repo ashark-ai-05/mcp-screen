@@ -75,7 +75,7 @@ export class WrapProxy {
       const w = await this.api.place({
         kind: 'mcp-app',
         title: tool?.title ?? tool?.annotations?.title ?? name,
-        data: { html, csp, resourceUri: uri, toolName: name, toolInput: args, toolResult: result },
+        data: { html, csp, resourceUri: uri, toolName: name, toolDef: tool, toolInput: args, toolResult: result },
       });
       return {
         ...result,
