@@ -120,20 +120,23 @@ describe('sessions and restarts', () => {
     expect((await canvasOf(sessions[0]!)).widgets.map((w) => w.id)).toEqual(['w1']);
   });
 
-  it('a hub restart on the same home comes back clean and usable', async () => {
+  it('the canvas survives hub restarts, cycle after cycle, positions and annotations included', async () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'mcp-screen-restart-'));
-    for (let round = 0; round < 3; round++) {
+    for (let round = 0; round < 4; round++) {
       hub = await startHub({ port: 0, home });
       const api = new RemoteApi(hub.url, hub.token);
       const c = await canvasOf(api);
-      expect(c.widgets).toHaveLength(0); // canvas state is in memory only (documented)
-      await api.place(spec(round));
+      expect(c.widgets).toHaveLength(round); // everything from earlier rounds came back
+      await api.place({ ...spec(round), id: `r${round}`, x: 2000 + round * 400, y: 77 });
       await api.clear();
       await api.undoClear();
-      expect((await canvasOf(api)).widgets).toHaveLength(1);
+      expect((await canvasOf(api)).widgets).toHaveLength(round + 1);
       await hub.close();
       hub = null;
     }
+    hub = await startHub({ port: 0, home });
+    const back = await canvasOf(new RemoteApi(hub.url, hub.token));
+    expect(back.widgets.find((w) => w.id === 'r3')).toMatchObject({ x: 3200, y: 77 });
     fs.rmSync(home, { recursive: true, force: true });
   });
 });

@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { LocalApi } from './api.js';
+import { restore, startPersistence } from './persist.js';
 import { AllowList, describeSource, RefreshScheduler, type Runners } from './refresh.js';
 import { readImage } from './images.js';
 import { CanvasStore, type AnnotationInput, type AskInput, type FormInput } from './store.js';
@@ -32,6 +33,8 @@ export interface HubOptions {
   port?: number;
   host?: string;
   home?: string | null;
+  /** Save the canvas to <home>/canvas.json and restore it on start (default true when home is set). */
+  persist?: boolean;
   runners?: Partial<Runners>;
   token?: string;
 }
@@ -281,6 +284,16 @@ export async function startHub(opts: HubOptions = {}): Promise<Hub> {
   const url = `http://127.0.0.1:${port}`;
   const api = new LocalApi(store, scheduler, url);
 
+  // the canvas survives restarts (MCP_SCREEN_NO_PERSIST=1 or persist:false turns it off)
+  let persistence: { flush(): void; stop(): void } | null = null;
+  if (home && opts.persist !== false && process.env.MCP_SCREEN_NO_PERSIST !== '1') {
+    fs.mkdirSync(home, { recursive: true });
+    await restore(home, store, api);
+    persistence = startPersistence(home, store);
+    const p = persistence;
+    process.once('exit', () => p.flush());
+  }
+
   if (home) {
     fs.mkdirSync(home, { recursive: true });
     const info: HubInfo = { port, token, pid: process.pid };
@@ -298,6 +311,7 @@ export async function startHub(opts: HubOptions = {}): Promise<Hub> {
       appCall = h;
     },
     close: async () => {
+      persistence?.stop();
       scheduler.stopAll();
       server.closeAllConnections();
       await new Promise<void>((r) => server.close(() => r()));

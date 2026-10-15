@@ -51,6 +51,15 @@ A widget can carry a `source` (a command, URL or MCP tool) that the server re-ru
 - **Annotations** (your arrows, circles, highlights and notes) are stored only in the hub's memory and are readable by any agent connected to the canvas. Don't write secrets in notes. Text is rendered with `textContent`.
 - **Forms** (`ask_form`): values are checked against the field definitions on the server before the agent sees them. There is no MCP tool that submits a form.
 
+## What is stored on disk
+
+`~/.mcp-screen/` (or `MCP_SCREEN_HOME`) holds:
+- `hub.json`: port and token, mode 0600, removed on exit.
+- `allowlist.json`: approved live sources.
+- `canvas.json`: the canvas, mode 0600, written atomically. It contains your widgets' data and your annotations, so anything an agent put on the canvas is now on disk too. Set `MCP_SCREEN_NO_PERSIST=1` to keep the canvas in memory only.
+
+On start, every saved widget goes back through the same validation as `place_widget`: image paths are re-checked, and a saved command source still needs the allow-list before it runs. A hand-edited file can't add anything the tools would reject. Open questions, open forms and MCP App frames are never saved.
+
 ## Reporting
 
 Please report vulnerabilities privately through GitHub Security Advisories on the repository rather than in a public issue.

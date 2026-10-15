@@ -290,6 +290,10 @@
         STATUS_LABEL[w.status] ? h('span', { class: `pill ${w.status}` }, STATUS_LABEL[w.status]) : null),
       body);
     canvas.position(el, w);
+    // more content than fits: fade the bottom edge as a "scroll for more" hint, until scrolled to the end
+    const more = () => body.classList.toggle('more', body.scrollHeight - body.scrollTop - body.clientHeight > 6);
+    body.addEventListener('scroll', more, { passive: true });
+    requestAnimationFrame(() => requestAnimationFrame(more));
     if (w.source && w.status !== 'needs-approval') {
       el.append(h('div', { class: 'card-foot' },
         h('span', { class: 'src mono', title: w.sourceLabel }, w.sourceLabel),

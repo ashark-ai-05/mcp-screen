@@ -31,3 +31,22 @@ A running critique, written as the product owner before each round of work. Shor
 3. A newly placed widget could land half off-screen (reveal only checked the top-left corner), which hid the **Approve** button of a live widget.
 
 **This round:** an empty or loading state for every kind; image skeleton and fade-in; a styled error state; an empty map overlay; timelines that may start empty. Plus a new hero GIF and MP4 from real tool calls (scripted agent, labelled), card screenshots centred via a new `focusOn`, a whole-card `reveal`, and a README rewrite of the hook.
+
+## Round 3 (2026-10-16)
+
+**Who it's for:** unchanged. The question this round: would someone *keep* it open all day?
+
+**First 60 seconds:** good now (explainer, sample canvas, `?` sheet, hero GIF that shows the hook). The next 60 *minutes* are the problem.
+
+**What would make someone star or share it.** Trust. The canvas is a working surface you arrange by hand: drag, tidy, circle things, leave notes. Losing all of that whenever the agent session restarts (every `claude` relaunch restarts the stdio server, which restarts the hub) quietly teaches people not to invest in the canvas.
+
+**Weakest part right now.**
+1. Everything on the canvas lived in hub memory only. A restart wiped widgets, positions and annotations, and the README admitted it.
+2. A markdown or notes card that overflows just clips mid-sentence (see "Agent notes" in `1-canvas.png`), with no hint that it scrolls.
+
+**This round:**
+- Persist the canvas to `~/.mcp-screen/canvas.json`: mode 0600, atomic, debounced.
+- Restore through the full validation path. Saved commands still need the allow-list; tampered entries are skipped.
+- Skip open asks and MCP App frames.
+- A "scroll for more" fade on overflowing cards.
+- Docs: what is stored on disk, plus honest remaining gaps.

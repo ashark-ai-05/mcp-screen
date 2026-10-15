@@ -103,3 +103,37 @@ Load average while measuring: 10.7 / 20.8 / 14.1 (the box was busy with other jo
 **Media:**
 - `screenshots/hero.gif` (960 px, 4.8 MB, ~32 s), `screenshots/hero.mp4` and `screenshots/hero.png`
 - refreshed `1-canvas`, `2a-live-needs-approval`, `5-wrap-mcp-app` and `6-ask-user`
+
+## Round 3 (2026-10-16)
+
+| Metric | Result | Budget |
+|---|---|---|
+| First paint | 152 ms | < 300 |
+| Placement median / p90 | 17 / 56 ms | < 50 (median) |
+| Pan @100% main-thread/frame (headless fps) | 3.8 ms (40) | ≤ 8 |
+| Pan @fit, all 120 visible | 5.1 ms (33) | ≤ 8 |
+| Zoom | 6.7 ms (22) | ≤ 8 |
+| CLS | 0.0001 | ≤ 0.02 |
+| Up-front bundle | 49.0 KB gzip | ≤ 80 |
+| Console errors | 0 | 0 |
+
+Load average 7.7 / 7.8 / 10.0.
+
+**Suites:**
+- typecheck clean
+- unit 97/97: 3 new persistence tests, and the restart test now asserts that the canvas *survives* 4 restart cycles, positions included
+- e2e 40/40
+- UX 42/42
+- soak PASS
+
+**Persistence checks:**
+- Every widget kind round-trips, and derived data (diff counts, diagram layout, checklist progress, log trimming) is rebuilt on load.
+- Annotations come back attached to the same widget and data points.
+- `canvas.json` is mode 0600.
+- Open questions are not saved.
+- A tampered file with an `/etc/passwd` image, an unknown kind, a `null` entry and a command source restores only the valid widgets; the command waits for approval.
+- A corrupt file still starts the hub.
+
+**Bugs fixed:**
+1. The canvas was lost on every hub restart. It is now persisted and restored.
+2. Overflowing cards clipped text with no affordance. They now show a bottom fade until scrolled to the end.

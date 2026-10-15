@@ -280,7 +280,7 @@ The UI uses the [Inter](https://rsms.me/inter/) variable font (SIL OFL 1.1, `pub
 
 ## Status
 
-v0.1, early. Known gaps: PNG export of an embedded MCP App shows a placeholder, because the sandboxed frame can't be captured; a single canvas per machine (no named canvases yet); MCP-tool live sources and app `tools/call` only work in the session that runs `wrap` and owns the canvas; no single-binary build yet.
+v0.1, early. The canvas (widgets, positions, your notes) is saved to `~/.mcp-screen/canvas.json` and comes back after a restart (`MCP_SCREEN_NO_PERSIST=1` turns that off). Known gaps: diagrams cover Mermaid *flowcharts* only; maps are an offline world outline (no tiles, no zoom inside the map); an export captures the current viewport; PNG export of an embedded MCP App shows a placeholder, because the sandboxed frame can't be captured; a single canvas per machine (no named canvases yet); MCP-tool live sources and app `tools/call` only work in the session that runs `wrap` and owns the canvas; no single-binary build yet.
 
 ## Security
 
