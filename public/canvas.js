@@ -551,7 +551,10 @@
       scheduleFollow();
       const n = state.annotations.size;
       const open = [...state.annotations.values()].filter((a) => a.text && (!a.replies || !a.replies.length || a.replies[a.replies.length - 1].from === 'human')).length;
-      document.getElementById('count-notes').textContent = n ? `${n} note${n === 1 ? '' : 's'} for the agent${open ? ` · ${open} waiting` : ' · all answered'}` : '';
+      const pill = document.getElementById('count-notes');
+      pill.textContent = n ? `${n} note${n === 1 ? '' : 's'} for the agent${open ? ` · ${open} waiting` : ' · all answered'}` : '';
+      pill.classList.toggle('awaiting', open > 0);
+      pill.title = open ? `${open} note${open === 1 ? '' : 's'} waiting for the agent — call read_canvas → pendingQuestions, then reply_annotation` : '';
       drawMinimap();
     }
 

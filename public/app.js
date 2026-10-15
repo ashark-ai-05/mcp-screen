@@ -701,22 +701,20 @@
     const el = document.getElementById('canvas-switch');
     if (!el) return;
     const list = state.canvases || [];
-    if (list.length <= 1) { el.hidden = true; el.replaceChildren(); return; }
     el.hidden = false;
-    el.replaceChildren(...list.map((c) => {
+    const pills = list.map((c) => {
       const b = h('button', { class: `canvas-pill${c.active || c.id === state.canvas ? ' on' : ''}`, type: 'button', title: c.id },
         c.title || c.id, c.widgets ? h('span', { class: 'n' }, String(c.widgets)) : null);
       b.addEventListener('click', () => { if (!(c.active || c.id === state.canvas)) api('POST', `/api/canvases/${encodeURIComponent(c.id)}/open`, {}); });
       return b;
-    }), (() => {
-      const add = h('button', { class: 'canvas-pill new', type: 'button', title: 'New canvas' }, '+');
-      add.addEventListener('click', async () => {
-        const title = prompt('Name this canvas (usually the project folder):');
-        if (!title || !title.trim()) return;
-        await api('POST', '/api/canvases', { title: title.trim() });
-      });
-      return add;
-    })());
+    });
+    const add = h('button', { class: 'canvas-pill new', type: 'button', title: 'New named canvas (usually a project folder)' }, list.length ? '+' : '+ project');
+    add.addEventListener('click', async () => {
+      const title = prompt('Name this canvas (usually the project folder):');
+      if (!title || !title.trim()) return;
+      await api('POST', '/api/canvases', { title: title.trim() });
+    });
+    el.replaceChildren(...(list.length > 1 ? pills : []), add);
   }
 
   // ---------- live connection ----------

@@ -598,3 +598,6 @@ kbd { display: inline-block; min-width: 20px; padding: 1px 6px; margin: 0 2px; b
 .canvas-pill.on { color: var(--text); background: rgba(142,166,255,.14); border-color: rgba(142,166,255,.4); }
 .canvas-pill .n { font-variant-numeric: tabular-nums; opacity: .7; font-size: 11px; }
 .canvas-pill .new { border-style: dashed; opacity: .75; }
+
+#count-notes.awaiting { color: #ffd166; animation: waitPulse 1.6s ease-in-out infinite; }
+@keyframes waitPulse { 50% { opacity: .55; } }
