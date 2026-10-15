@@ -140,3 +140,28 @@ A running critique, written as the product owner before each round of work. Shor
 **This round:** empty-state **Copy install-hooks** button; README documents the UserPromptSubmit pending-notes injection. Perf still green (gzip 53.6 KB, misses []).
 
 Wrapping the overnight pass here — the three Round-6 launch items plus undo, notifications and discoverability are shipped.
+
+## Round 12 (2026-10-16)
+
+**This round:**
+1. Notification mute / per-canvas mute / quiet hours (Share → Notifications; localStorage only).
+2. Multi-step annotation undo stack (up to 20; Ctrl+Z repeatedly).
+3. `reply_oldest_pending` MCP tool — answer the oldest unanswered note in one call.
+
+## Round 13 (2026-10-16) — morning wrap
+
+**Overnight scorecard.** The product loop is complete enough to ship as v0.1:
+
+| Loop | Status |
+|------|--------|
+| Agent places → human sees | Strong (17 kinds, empty states, sample canvas) |
+| Human circles / taps → agent reads | Strong (`pendingQuestions`, dataPoints, scroll-stable) |
+| Agent answers on the mark | Strong (thread UI + `reply_annotation` + `reply_oldest_pending`) |
+| Agent is nudged without being asked | Strong (UserPromptSubmit hook) |
+| Multi-project | Strong (named canvases + switcher + Share link) |
+| Trust / undo | Strong enough (Clear undo + annotation stack) |
+| Share | Strong (full canvas, project filename, quiet notifications) |
+
+**Honest remaining gaps (do not block a first public README):** Mermaid flowcharts only; offline map outline; MCP App PNG placeholder; live MCP sources only in `wrap` session; no single-binary; notifications are browser-local (no push server).
+
+**Stop here for morning.** Next human-directed pass can pick tiles, a single-binary, or npm publish — none of those are overnight polish.

@@ -486,6 +486,62 @@ await page.locator('.toast .btn').filter({ hasText: 'Undo' }).click();
 await sleep(500);
 check('Undo brings back a singly-deleted annotation', ((await call('read_widget', { id: 'long' })).annotations || []).some((a) => a.id === doomed.id && a.text === 'why this row?'));
 
+
+
+// ---- 8f. reply_oldest_pending + multi-step annotation undo ----
+await call('clear_canvas', {});
+await page.evaluate(async () => {
+  const TOKEN = document.querySelector('meta[name="mcp-screen-token"]').content;
+  const post = (path, body) => fetch(path, { method: 'POST', headers: { 'content-type': 'application/json', 'x-mcp-screen-token': TOKEN }, body: JSON.stringify(body) }).then((r) => r.json());
+  await post('/api/widgets', { id: 'ask-a', kind: 'metric', title: 'Ask A', data: { value: 1 }, w: 1, h: 1, x: 0, y: 0 });
+  await post('/api/annotations', { kind: 'note', points: [[50, 50]], text: 'oldest ask', color: '#ffd166', widgetId: 'ask-a' });
+  await new Promise((r) => setTimeout(r, 40));
+  await post('/api/annotations', { kind: 'note', points: [[120, 80]], text: 'newer ask', color: '#ffd166', widgetId: 'ask-a' });
+});
+await sleep(500);
+const oldest = await call('reply_oldest_pending', { text: 'Here is the answer to the oldest note.' });
+check('reply_oldest_pending answers the oldest unanswered note', oldest.question === 'oldest ask' && oldest.annotation?.replies?.some((r) => r.from === 'agent'), JSON.stringify(oldest));
+const still = (await call('read_canvas')).pendingQuestions;
+check('the newer note is still pending after reply_oldest_pending', still.length === 1 && still[0].question === 'newer ask', JSON.stringify(still));
+
+const beforeUndo = (await call('read_canvas')).annotations.map((a) => a.id);
+for (const id of beforeUndo) {
+  await page.evaluate(async (id) => {
+    const TOKEN = document.querySelector('meta[name="mcp-screen-token"]').content;
+    await fetch(`/api/annotations/${id}`, { method: 'DELETE', headers: { 'x-mcp-screen-token': TOKEN } });
+  }, id);
+}
+await sleep(300);
+check('both notes deleted', (await call('read_canvas')).annotations.length === 0);
+await page.evaluate(async () => {
+  const TOKEN = document.querySelector('meta[name="mcp-screen-token"]').content;
+  const undo = () => fetch('/api/annotations/undo', { method: 'POST', headers: { 'content-type': 'application/json', 'x-mcp-screen-token': TOKEN }, body: '{}' });
+  await undo(); await undo();
+});
+await sleep(400);
+check('multi-step annotation undo stack restores both notes', (await call('read_canvas')).annotations.length === 2);
+// keyboard path: delete one, Ctrl+Z brings it back
+const one = (await call('read_canvas')).annotations[0].id;
+await page.evaluate(async (id) => {
+  const TOKEN = document.querySelector('meta[name="mcp-screen-token"]').content;
+  await fetch(`/api/annotations/${id}`, { method: 'DELETE', headers: { 'x-mcp-screen-token': TOKEN } });
+}, one);
+await sleep(200);
+await page.locator('.toast .btn', { hasText: 'Undo' }).waitFor({ timeout: 3000 });
+await page.locator('.toast .btn', { hasText: 'Undo' }).click();
+await sleep(400);
+check('Undo toast restores the last deleted annotation', ((await call('read_canvas')).annotations || []).some((a) => a.id === one));
+// Ctrl/Cmd+Z is wired the same as the toast (annotation stack first)
+await page.evaluate(async (id) => {
+  const TOKEN = document.querySelector('meta[name="mcp-screen-token"]').content;
+  await fetch(`/api/annotations/${id}`, { method: 'DELETE', headers: { 'x-mcp-screen-token': TOKEN } });
+}, one);
+await sleep(200);
+await page.locator('#stage').click({ position: { x: 30, y: 30 } });
+await page.keyboard.press('Control+z');
+await sleep(400);
+check('Ctrl+Z undoes via the annotation stack', ((await call('read_canvas')).annotations || []).some((a) => a.id === one));
+
 // ---- 9. back to canvas for the end of the video ----
 await page.locator('.tab[data-tab="canvas"]').click();
 await sleep(2500);

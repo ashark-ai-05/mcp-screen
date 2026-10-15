@@ -183,3 +183,10 @@ Load average 7.7 / 7.8 / 10.0.
 
 **Perf:** first paint 52 ms · place 5 ms · gzip 53.6 KB · misses [].
 **Tests:** unit 108, e2e 52, ux 42, soak PASS.
+
+
+## Round 12 (2026-10-16, Australia/Melbourne)
+
+**Shipped:** notify mute + quiet hours; annotation undo stack (20); reply_oldest_pending.
+
+**Tests:** unit 111+, e2e 58.

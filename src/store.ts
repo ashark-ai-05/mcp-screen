@@ -104,7 +104,9 @@ export class CanvasStore {
   private pendingAsks = new Map<string, (r: AskResult | FormResult) => void>();
   private annotations = new Map<string, Annotation>();
   private lastClearedNotes: Annotation[] = [];
-  private lastRemovedAnnotation: Annotation | null = null;
+  /** Singly-deleted annotations, newest removal last. Cap keeps Ctrl+Z useful without unbounded growth. */
+  private removedAnnotations: Annotation[] = [];
+  static readonly UNDO_STACK = 20;
   private reports: Report[] = [];
   private unmapped = new Map<string, string[]>();
   private activity: Activity[] = [];
@@ -231,7 +233,7 @@ export class CanvasStore {
   }
 
   /** Marks with a question the agent hasn't answered yet (or a human follow-up after its last answer). */
-  pendingQuestions(): Array<{ id: string; kind: string; question: string; target?: Annotation['target'] }> {
+  pendingQuestions(): Array<{ id: string; kind: string; question: string; createdAt: string; target?: Annotation['target'] }> {
     return this.listAnnotations()
       .filter((a) => {
         if (!a.text) return false;
@@ -240,8 +242,9 @@ export class CanvasStore {
       })
       .map((a) => {
         const last = a.replies?.[a.replies.length - 1];
-        return { id: a.id, kind: a.kind, question: last ? last.text : a.text!, ...(a.target ? { target: a.target } : {}) };
-      });
+        return { id: a.id, kind: a.kind, question: last ? last.text : a.text!, createdAt: a.createdAt, ...(a.target ? { target: a.target } : {}) };
+      })
+      .sort((p, q) => p.createdAt.localeCompare(q.createdAt));
   }
 
   updateAnnotation(id: string, patch: { text?: string }): Annotation {
@@ -259,27 +262,33 @@ export class CanvasStore {
     const a = this.annotations.get(id);
     const ok = this.annotations.delete(id);
     if (ok && a) {
-      this.lastRemovedAnnotation = a;
+      this.removedAnnotations.push(a);
+      if (this.removedAnnotations.length > CanvasStore.UNDO_STACK) this.removedAnnotations.shift();
       this.bus.push({ type: 'annotation-remove', id, undoable: true });
     }
     return ok;
   }
 
-  /** Bring back the last singly-deleted annotation (not from clear_canvas). */
+  /** How many singly-deleted annotations can still be undone. */
+  annotationUndoDepth(): number {
+    return this.removedAnnotations.length;
+  }
+
+  /** Bring back the most recently singly-deleted annotation (not from clear_canvas). Call again for older ones. */
   undoAnnotation(): Annotation | null {
-    const a = this.lastRemovedAnnotation;
-    this.lastRemovedAnnotation = null;
-    if (!a || this.annotations.has(a.id)) return null;
-    if (a.target && !this.widgets.has(a.target.widgetId)) {
-      // widget gone: still restore the mark, drop the stale target
-      const { target: _t, ...rest } = a;
-      this.annotations.set(rest.id, rest as Annotation);
-      this.bus.push({ type: 'annotation-restored', annotation: rest as Annotation });
-      return rest as Annotation;
+    while (this.removedAnnotations.length) {
+      const a = this.removedAnnotations.pop()!;
+      if (this.annotations.has(a.id)) continue;
+      let back = a;
+      if (a.target && !this.widgets.has(a.target.widgetId)) {
+        const { target: _t, ...rest } = a;
+        back = rest as Annotation;
+      }
+      this.annotations.set(back.id, back);
+      this.bus.push({ type: 'annotation-restored', annotation: back });
+      return back;
     }
-    this.annotations.set(a.id, a);
-    this.bus.push({ type: 'annotation-restored', annotation: a });
-    return a;
+    return null;
   }
 
   listAnnotations(): Annotation[] {
@@ -339,7 +348,7 @@ export class CanvasStore {
   clear(): { removed: number } {
     const all = this.list();
     if (all.length === 0 && this.annotations.size === 0) return { removed: 0 };
-    this.lastRemovedAnnotation = null;
+    this.removedAnnotations = [];
     this.lastClearedNotes = this.listAnnotations();
     for (const a of this.lastClearedNotes) this.removeAnnotation(a.id);
     for (const w of all) {

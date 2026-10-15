@@ -83,13 +83,24 @@ export class CanvasBook {
     return e;
   }
 
-  /** Pending annotation questions across every named canvas (for the agent hook). */
-  pendingAcross(): Array<{ canvas: string; title: string; id: string; kind: string; question: string; target?: unknown }> {
-    const out: Array<{ canvas: string; title: string; id: string; kind: string; question: string; target?: unknown }> = [];
+  /** Pending annotation questions across every named canvas (for the agent hook), oldest first. */
+  pendingAcross(): Array<{ canvas: string; title: string; id: string; kind: string; question: string; createdAt: string; target?: unknown }> {
+    const out: Array<{ canvas: string; title: string; id: string; kind: string; question: string; createdAt: string; target?: unknown }> = [];
     for (const [id, e] of this.entries) {
       for (const q of e.store.pendingQuestions()) out.push({ canvas: id, title: e.title, ...q });
     }
-    return out;
+    return out.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  }
+
+
+  /** Answer the oldest unanswered note. Optionally limit to one canvas id; switches the browser to it. */
+  replyOldestPending(text: string, canvasId?: string): { canvas: string; annotation: import('./types.js').Annotation; question: string } {
+    const want = canvasId ? slug(canvasId) : undefined;
+    const q = this.pendingAcross().find((p) => !want || p.canvas === want);
+    if (!q) throw new Error(want ? `no pending notes on canvas “${want}”` : 'no pending notes on any canvas; nothing to answer');
+    if (q.canvas !== this.activeCanvasId) this.setActive(q.canvas);
+    const annotation = this.store(q.canvas).replyAnnotation(q.id, text, 'agent');
+    return { canvas: q.canvas, annotation, question: q.question };
   }
 
   list(): CanvasInfo[] {

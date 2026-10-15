@@ -23,6 +23,7 @@ export interface ScreenApi {
   listCanvases(): Promise<unknown>;
   openCanvas(id: string, title?: string): Promise<unknown>;
   pendingQuestions(): Promise<unknown>;
+  replyOldestPending(text: string, canvas?: string): Promise<unknown>;
   /** Optional canvas id for the next place/read/clear/tidy (agent project). */
   useCanvas?(id: string | undefined): void;
   readonly defaultCanvas?: string;
@@ -107,6 +108,13 @@ export class LocalApi implements ScreenApi {
   async pendingQuestions() {
     return this.book?.pendingAcross() ?? this.store.pendingQuestions().map((q) => ({ canvas: 'default', title: 'default', ...q }));
   }
+  async replyOldestPending(text: string, canvas?: string) {
+    if (this.book) return this.book.replyOldestPending(text, canvas);
+    const q = this.store.pendingQuestions()[0];
+    if (!q) throw new Error('no pending notes on the canvas; nothing to answer');
+    const annotation = this.store.replyAnnotation(q.id, text, 'agent');
+    return { canvas: 'default', annotation, question: q.question };
+  }
 }
 
 export class RemoteApi implements ScreenApi {
@@ -167,6 +175,9 @@ export class RemoteApi implements ScreenApi {
   listCanvases() { return this.call('GET', '/api/canvases'); }
   openCanvas(id: string) { return this.call('POST', `/api/canvases/${encodeURIComponent(id)}/open`, {}); }
   pendingQuestions() { return this.call('GET', '/api/pending-questions'); }
+  replyOldestPending(text: string, canvas?: string) {
+    return this.call('POST', '/api/annotations/reply-oldest', { text, ...(canvas ? { canvas } : {}) });
+  }
   async askForm(input: FormInput): Promise<FormResult> {
     const { signal, ...body } = input;
     const timeout = AbortSignal.timeout((body.timeoutMs ?? 180_000) + 10_000);

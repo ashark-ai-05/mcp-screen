@@ -745,6 +745,55 @@
   grid.addEventListener('pointercancel', cancelHold, true);
   grid.addEventListener('pointermove', (e) => { if (holdEl && (Math.abs(e.movementX) + Math.abs(e.movementY) > 8)) cancelHold(); }, true);
 
+
+  // ---------- notification prefs (mute / per-canvas / quiet hours) ----------
+  const N = window.McpScreenNotify;
+  function loadNotifyPrefs() { return N.load(); }
+  function saveNotifyPrefs(p) { N.save(p); renderNotifySummary(); }
+  function shouldNotify(canvasId) {
+    return document.hidden && N.shouldNotify(loadNotifyPrefs(), canvasId, { permission: typeof Notification !== 'undefined' ? Notification.permission : 'denied' });
+  }
+  function renderNotifySummary() {
+    const el = document.getElementById('notify-summary');
+    if (el) el.textContent = N.summarize(loadNotifyPrefs(), state.canvas);
+  }
+  function openNotifySettings() {
+    shareMenu.classList.remove('open');
+    const prefs = loadNotifyPrefs();
+    const bg = h('div', { class: 'modal-bg', onclick: (e) => { if (e.target === bg) bg.remove(); } },
+      h('div', { class: 'modal sheet', role: 'dialog', 'aria-label': 'Notification settings' },
+        h('h3', {}, 'Notifications'),
+        h('p', { class: 'lead', style: { marginTop: 0 } }, 'Desktop alerts when the agent replies while this tab is in the background. Stored only in this browser.'),
+        h('label', { class: 'sc-row', style: { display: 'flex', gap: '10px', alignItems: 'center' } },
+          h('input', { type: 'checkbox', id: 'nf-muted', checked: prefs.muted || undefined }),
+          h('span', {}, 'Mute all canvases')),
+        h('label', { class: 'sc-row', style: { display: 'flex', gap: '10px', alignItems: 'center' } },
+          h('input', { type: 'checkbox', id: 'nf-canvas', checked: (state.canvas && prefs.mutedCanvases.includes(state.canvas)) || undefined, disabled: !state.canvas || undefined }),
+          h('span', {}, `Mute this canvas${state.canvas ? ` (${state.canvas})` : ''}`)),
+        h('div', { class: 'sc-row', style: { display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' } },
+          h('span', {}, 'Quiet hours'),
+          h('input', { type: 'time', id: 'nf-qs', value: prefs.quietStart == null ? '' : `${String(Math.floor(prefs.quietStart)).padStart(2,'0')}:${String(Math.round((prefs.quietStart%1)*60)).padStart(2,'0')}` }),
+          h('span', {}, '–'),
+          h('input', { type: 'time', id: 'nf-qe', value: prefs.quietEnd == null ? '' : `${String(Math.floor(prefs.quietEnd)).padStart(2,'0')}:${String(Math.round((prefs.quietEnd%1)*60)).padStart(2,'0')}` }),
+          h('span', { style: { opacity: .65, fontSize: 12 } }, 'local time · leave blank for none')),
+        h('div', { class: 'row', style: { marginTop: 14 } },
+          h('button', { class: 'btn ghost', onclick: () => bg.remove() }, 'Cancel'),
+          h('button', { class: 'btn accent', onclick: () => {
+            const muted = !!document.getElementById('nf-muted').checked;
+            const muteThis = !!document.getElementById('nf-canvas').checked;
+            const qs = document.getElementById('nf-qs').value;
+            const qe = document.getElementById('nf-qe').value;
+            const parse = (v) => { if (!v) return null; const [hh, mm] = v.split(':').map(Number); return hh + mm / 60; };
+            let mutedCanvases = prefs.mutedCanvases.filter((id) => id !== state.canvas);
+            if (muteThis && state.canvas) mutedCanvases.push(state.canvas);
+            saveNotifyPrefs({ muted, mutedCanvases, quietStart: parse(qs), quietEnd: parse(qe) });
+            if (!muted && typeof Notification !== 'undefined' && Notification.permission === 'default') Notification.requestPermission();
+            bg.remove();
+            toast('Notification prefs saved', null, 2500);
+          } }, 'Save'))));
+    document.body.append(bg);
+  }
+
   // ---------- live connection ----------
   const conn = document.getElementById('conn');
   const connText = document.getElementById('conn-text');
@@ -819,13 +868,13 @@
         const replies = ev.annotation.replies || [];
         const last = replies[replies.length - 1];
         const grew = last && last.from === 'agent' && (!prev || (prev.replies || []).length < replies.length);
-        if (grew && document.hidden && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+        if (grew && shouldNotify(state.canvas)) {
           try { new Notification('mcp-screen', { body: `Agent replied: ${last.text.slice(0, 120)}`, tag: ev.annotation.id }); } catch { /* ignore */ }
         }
       } else if (ev.type === 'annotation-remove') {
         state.annotations.delete(ev.id);
         canvas.renderAnnotations();
-        if (ev.undoable) toast('Note removed', { label: 'Undo', run: () => api('POST', '/api/annotations/undo') }, 8000);
+        if (ev.undoable) toast('Note removed · Ctrl+Z undoes (again for older)', { label: 'Undo', run: () => api('POST', '/api/annotations/undo') }, 8000);
       } else if (ev.type === 'annotation-restored') {
         state.annotations.set(ev.annotation.id, ev.annotation);
         canvas.renderAnnotations();
@@ -837,7 +886,7 @@
         state.widgets = new Map((ev.widgets || []).map((w) => [w.id, w]));
         state.annotations = new Map((ev.annotations || []).map((a) => [a.id, a]));
         frames.clear();
-        renderAll(); canvas.renderAnnotations(); renderCanvasSwitch();
+        renderAll(); canvas.renderAnnotations(); renderCanvasSwitch(); renderNotifySummary();
         const title = (state.canvases.find((c) => c.id === ev.canvas) || {}).title || ev.canvas;
         toast(`Switched to “${title}”`, null, 2200);
       } else if (ev.type === 'cleared') {
@@ -888,7 +937,15 @@
     sheet.querySelector('.btn.accent').focus({ preventScroll: true });
   }
   document.addEventListener('keydown', (e) => {
-    if (e.target.closest && e.target.closest('input, textarea, select, [contenteditable]')) return;
+    if (e.target?.closest?.('input, textarea, select, [contenteditable]')) return;
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
+      e.preventDefault();
+      api('POST', '/api/annotations/undo').then((r) => {
+        if (r && r.result != null) return;
+        api('POST', '/api/canvas/undo');
+      });
+      return;
+    }
     if (e.key === '?') { e.preventDefault(); shortcuts(); }
     else if (e.key === 'Escape' && sheet) shortcuts(false);
   });
@@ -939,6 +996,8 @@
       prompt('Copy this localhost link:', link);
     }
   });
+  document.getElementById('notify-settings')?.addEventListener('click', (e) => { e.stopPropagation(); openNotifySettings(); });
+  renderNotifySummary();
   window.__mcpScreen = { doExport, canvas, state };
 
   setInterval(() => {

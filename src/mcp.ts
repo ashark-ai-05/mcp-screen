@@ -202,6 +202,20 @@ export const SCREEN_TOOLS: Tool[] = [
     },
   },
   {
+    name: 'reply_oldest_pending',
+    description:
+      'One-click: answer the oldest unanswered note on the canvas (see read_canvas → pendingQuestions). ' +
+      'Use when the human said "answer my notes" or a hook told you notes are waiting and you can answer the first one now. Optional canvas limits to that project.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        text: { type: 'string', description: 'Your answer (plain text, short).' },
+        canvas: { type: 'string', description: 'Optional project canvas id; default is the oldest across all canvases.' },
+      },
+      required: ['text'],
+    },
+  },
+  {
     name: 'post_report',
     description:
       'Post a standup card when you finish a task: what you changed, test results, a short summary and risks. Cards are grouped by worktree and agent on the Standup board.',
@@ -385,6 +399,10 @@ export async function callScreenTool(api: ScreenApi, name: string, args: unknown
       case 'reply_annotation': {
         const a = z.object({ id: z.string().min(1), text: z.string().min(1).max(4000) }).parse(args);
         return ok(await api.replyAnnotation(a.id, a.text));
+      }
+      case 'reply_oldest_pending': {
+        const a = z.object({ text: z.string().min(1).max(4000), canvas: z.string().optional() }).parse(args);
+        return ok(await api.replyOldestPending(a.text, a.canvas));
       }
       case 'post_report': {
         const r = await api.postReport(ReportZ.parse(args) as never);

@@ -87,7 +87,7 @@ describe('annotation threads', () => {
     const s = setup();
     const q = s.annotate({ kind: 'circle', points: [[300, 60], [420, 200]], text: 'why?', dataPoints: [{ label: '10/09', value: 9 }] });
     s.annotate({ kind: 'arrow', points: [[0, 0], [10, 10]] }); // no text: not a question
-    expect(s.pendingQuestions()).toEqual([{ id: q.id, kind: 'circle', question: 'why?', target: q.target }]);
+    expect(s.pendingQuestions()).toMatchObject([{ id: q.id, kind: 'circle', question: 'why?', target: q.target }]);
     s.replyAnnotation(q.id, '  Deploy at 09:02 slowed the coupon service.  ');
     expect(s.pendingQuestions()).toEqual([]);
     expect(s.listAnnotations().find((a) => a.id === q.id)!.replies).toEqual([{ text: 'Deploy at 09:02 slowed the coupon service.', at: expect.any(String), from: 'agent' }]);
@@ -116,7 +116,7 @@ describe('annotation threads', () => {
   });
 });
 
-describe('undo a single deleted annotation', () => {
+describe('undo deleted annotations', () => {
   it('removeAnnotation can be undone once; clear wipes that undo', () => {
     const s = setup();
     s.place({ id: 'c', kind: 'chart', title: 'c', data: { labels: ['a'], values: [1] }, x: 0, y: 0, w: 2, h: 2 });
@@ -129,6 +129,23 @@ describe('undo a single deleted annotation', () => {
     expect(s.undoAnnotation()).toBeNull();
     s.removeAnnotation(a.id);
     s.clear();
-    expect(s.undoAnnotation()).toBeNull(); // clear consumed the single-delete undo
+    expect(s.undoAnnotation()).toBeNull(); // clear wipes the stack
+  });
+
+  it('Ctrl+Z can walk a multi-step undo stack (newest removal first)', () => {
+    const s = setup();
+    s.place({ id: 'c', kind: 'metric', title: 'c', data: { value: 1 } });
+    const a = s.annotate({ kind: 'note', points: [[1, 1]], text: 'first' });
+    const b = s.annotate({ kind: 'note', points: [[2, 2]], text: 'second' });
+    const c = s.annotate({ kind: 'note', points: [[3, 3]], text: 'third' });
+    s.removeAnnotation(a.id);
+    s.removeAnnotation(b.id);
+    s.removeAnnotation(c.id);
+    expect(s.annotationUndoDepth()).toBe(3);
+    expect(s.undoAnnotation()?.text).toBe('third');
+    expect(s.undoAnnotation()?.text).toBe('second');
+    expect(s.undoAnnotation()?.text).toBe('first');
+    expect(s.listAnnotations().map((x) => x.text).sort()).toEqual(['first', 'second', 'third']);
+    expect(s.annotationUndoDepth()).toBe(0);
   });
 });

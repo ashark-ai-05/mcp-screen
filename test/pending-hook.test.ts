@@ -36,3 +36,31 @@ describe('runHook pending context', () => {
     expect(s.posted).toBe('pending-context');
   });
 });
+
+describe('reply_oldest_pending', () => {
+  let hub: Hub | undefined;
+  let home: string | undefined;
+  afterEach(async () => { await hub?.close(); if (home) fs.rmSync(home, { recursive: true, force: true }); });
+
+  it('answers the oldest pending note across canvases', async () => {
+    home = fs.mkdtempSync(path.join(os.tmpdir(), 'mcp-rop-'));
+    hub = await startHub({ port: 0, home, canvas: 'alpha' });
+    hub.store.place({ id: 'w', kind: 'metric', title: 'm', data: { value: 1 } });
+    const older = hub.store.annotate({ kind: 'note', points: [[1, 1]], text: 'first question' });
+    // force older createdAt
+    (older as { createdAt: string }).createdAt = '2026-01-01T00:00:00.000Z';
+    const newer = hub.store.annotate({ kind: 'note', points: [[2, 2]], text: 'second question' });
+    (newer as { createdAt: string }).createdAt = '2026-06-01T00:00:00.000Z';
+
+    await hub.api.openCanvas('beta', 'beta');
+    await hub.api.place({ id: 'x', kind: 'metric', title: 'x', data: { value: 2 } });
+    // place on beta via store after switch
+    const mid = hub.store.annotate({ kind: 'note', points: [[3, 3]], text: 'beta note' });
+    (mid as { createdAt: string }).createdAt = '2026-03-01T00:00:00.000Z';
+
+    const r = await hub.api.replyOldestPending('answering the oldest');
+    expect(r).toMatchObject({ canvas: 'alpha', question: 'first question' });
+    expect(hub.book.activeCanvasId).toBe('alpha');
+    expect(hub.store.pendingQuestions().map((q) => q.question)).toEqual(['second question']);
+  });
+});

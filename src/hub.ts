@@ -236,6 +236,12 @@ export async function startHub(opts: HubOptions = {}): Promise<Hub> {
     if (req.method === 'POST' && p === '/api/canvas/tidy') return send(res, 200, { result: await api.tidy(typeof (body as { columns?: unknown })?.columns === 'number' ? (body as { columns: number }).columns : undefined) });
     if (req.method === 'POST' && p === '/api/annotations') return send(res, 200, { result: store.annotate(body as AnnotationInput) });
     if (req.method === 'POST' && p === '/api/annotations/undo') return send(res, 200, { result: store.undoAnnotation() });
+    if (req.method === 'POST' && p === '/api/annotations/reply-oldest') {
+      const b = body as { text?: unknown; canvas?: unknown };
+      const text = typeof b.text === 'string' ? b.text : '';
+      const canvas = typeof b.canvas === 'string' ? b.canvas : undefined;
+      return send(res, 200, { result: book.replyOldestPending(text, canvas) });
+    }
     const ann = /^\/api\/annotations\/([\w.-]+)$/.exec(p);
     if (ann && req.method === 'DELETE') return send(res, 200, { result: store.removeAnnotation(ann[1] as string) });
     const rep = /^\/api\/annotations\/([\w.-]+)\/reply$/.exec(p);

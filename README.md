@@ -85,7 +85,7 @@ A widget can carry a command/URL/tool `source` that refreshes with no LLM in the
 </tr>
 </table>
 
-Plus **Share** (PNG/HTML of the **whole** canvas, filename includes the project; **Copy link** opens that named canvas on localhost), **named canvases** (git root by default, header switcher), and **Clear** (confirm + undo). Circle a bar or **long-press / Alt+click** a row to leave a note; the agent answers in a thread (`reply_annotation`). With `install-hooks`, every prompt injects “N notes waiting on the canvas” when you left questions unanswered.
+Plus **Share** (PNG/HTML of the **whole** canvas, filename includes the project; **Copy link** opens that named canvas on localhost; **Notifications** can mute a canvas or set quiet hours), **named canvases** (git root by default, header switcher), and **Clear** (confirm + undo). Circle a bar or **long-press / Alt+click** a row to leave a note; the agent answers in a thread (`reply_annotation`). With `install-hooks`, every prompt injects “N notes waiting on the canvas” when you left questions unanswered.
 
 ## Install
 
@@ -169,6 +169,7 @@ Gemini CLI disables MCP servers in folders you haven't trusted, so trust the pro
 | `read_canvas` | List every widget (with `x`, `y`, `width`, `height`), every annotation with its target and replies, and `pendingQuestions` the agent still owes an answer to. Optional `canvas` picks a named project canvas. |
 | `list_canvases` / `open_canvas` | List named canvases (one per project) and switch the browser to one. Default name = git root folder, or `MCP_SCREEN_CANVAS`. |
 | `reply_annotation` | Answer (or follow up on) a human's note/circle. The reply appears as a thread bubble next to their mark. |
+| `reply_oldest_pending` | One-click: answer the oldest unanswered note (optional `canvas`). |
 
 With `npx mcp-screen install-hooks --write`, Claude Code also gets a `UserPromptSubmit` / `SessionStart` hook: when notes are waiting, each prompt injects them as `additionalContext` so the agent can call `reply_annotation` without being asked again.
 | `remove_widget` | Remove one widget. |
