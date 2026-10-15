@@ -170,3 +170,8 @@ Load average 7.7 / 7.8 / 10.0.
 **Shipped:** undo for a single deleted annotation (toast + POST /api/annotations/undo); empty-state mentions install-hooks; docs catch-up.
 
 **Tests:** unit 108+, e2e 52.
+
+
+## Round 10 (2026-10-16)
+
+**Shipped:** background Notification on agent reply (permission via notes pill click); Ctrl/Cmd+Z for annotation undo.

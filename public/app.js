@@ -748,6 +748,11 @@
   // ---------- live connection ----------
   const conn = document.getElementById('conn');
   const connText = document.getElementById('conn-text');
+  const notesPill = document.getElementById('count-notes');
+  notesPill?.addEventListener('click', () => {
+    if (typeof Notification !== 'undefined' && Notification.permission === 'default') Notification.requestPermission();
+  });
+  notesPill && (notesPill.style.cursor = 'pointer');
   function connect() {
     const es = new EventSource(`/api/events?token=${encodeURIComponent(TOKEN)}`);
     es.addEventListener('snapshot', (e) => {
@@ -807,9 +812,16 @@
         const w = currentMap();
         if (w) renderSide(w);
       } else if (ev.type === 'annotation') {
+        const prev = state.annotations.get(ev.annotation.id);
         state.annotations.set(ev.annotation.id, ev.annotation);
         canvas.renderAnnotations();
         document.getElementById('clear-btn').disabled = false;
+        const replies = ev.annotation.replies || [];
+        const last = replies[replies.length - 1];
+        const grew = last && last.from === 'agent' && (!prev || (prev.replies || []).length < replies.length);
+        if (grew && document.hidden && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+          try { new Notification('mcp-screen', { body: `Agent replied: ${last.text.slice(0, 120)}`, tag: ev.annotation.id }); } catch { /* ignore */ }
+        }
       } else if (ev.type === 'annotation-remove') {
         state.annotations.delete(ev.id);
         canvas.renderAnnotations();
@@ -869,7 +881,7 @@
         h('h3', {}, 'Shortcuts'),
         h('div', { class: 'sc-grid' },
           h('div', {}, h('h4', {}, 'Canvas'), row(['drag'], 'pan (on the background)'), row(['scroll'], 'pan'), row(['Ctrl', 'scroll'], 'zoom'), row(['+', '−'], 'zoom in / out'), row(['F'], 'fit everything'), row(['Space', 'drag'], 'pan from anywhere')),
-          h('div', {}, h('h4', {}, 'Talk back to the agent'), row(['V'], 'select / pan'), row(['A'], 'arrow'), row(['O'], 'circle'), row(['H'], 'highlighter'), row(['N'], 'sticky note'), row(['hold'], 'long-press a bar/row (or Alt+click) to ask'), row(['Del'], 'delete the selected mark'), row(['Esc'], 'back to select'))),
+          h('div', {}, h('h4', {}, 'Talk back to the agent'), row(['V'], 'select / pan'), row(['A'], 'arrow'), row(['O'], 'circle'), row(['H'], 'highlighter'), row(['N'], 'sticky note'), row(['hold'], 'long-press a bar/row (or Alt+click) to ask'), row(['Del'], 'delete the selected mark'), row(['Ctrl', 'Z'], 'undo delete (or Clear)'), row(['Esc'], 'back to select'))),
         h('p', { class: 'muted' }, 'Every mark is attached to the widget and the data points under it, so your agent can read it with read_canvas.'),
         h('div', { class: 'row' }, h('button', { class: 'btn accent', onclick: () => shortcuts(false) }, 'Got it'))));
     document.body.append(sheet);

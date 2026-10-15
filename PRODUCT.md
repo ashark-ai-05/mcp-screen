@@ -128,3 +128,9 @@ A running critique, written as the product owner before each round of work. Shor
 **This round:** single-annotation undo (toast + `POST /api/annotations/undo`); SECURITY/PRODUCT/QA catch-up.
 
 **Next:** OS notification for background notes; empty-state CTA for `install-hooks`.
+
+## Round 10 (2026-10-16)
+
+**This round:** OS notification when the agent replies while the tab is hidden (opt-in via clicking the notes pill); Ctrl/Cmd+Z undoes annotation delete (falls back to Clear undo).
+
+**Gaps left:** richer empty-state CTA with the exact install-hooks command to copy; per-canvas notification mute.
