@@ -175,3 +175,11 @@ Load average 7.7 / 7.8 / 10.0.
 ## Round 10 (2026-10-16)
 
 **Shipped:** background Notification on agent reply (permission via notes pill click); Ctrl/Cmd+Z for annotation undo.
+
+
+## Round 11 (2026-10-16)
+
+**Shipped:** Copy install-hooks CTA on the empty canvas; README hook docs.
+
+**Perf:** first paint 52 ms · place 5 ms · gzip 53.6 KB · misses [].
+**Tests:** unit 108, e2e 52, ux 42, soak PASS.

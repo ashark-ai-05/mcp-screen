@@ -169,6 +169,8 @@ Gemini CLI disables MCP servers in folders you haven't trusted, so trust the pro
 | `read_canvas` | List every widget (with `x`, `y`, `width`, `height`), every annotation with its target and replies, and `pendingQuestions` the agent still owes an answer to. Optional `canvas` picks a named project canvas. |
 | `list_canvases` / `open_canvas` | List named canvases (one per project) and switch the browser to one. Default name = git root folder, or `MCP_SCREEN_CANVAS`. |
 | `reply_annotation` | Answer (or follow up on) a human's note/circle. The reply appears as a thread bubble next to their mark. |
+
+With `npx mcp-screen install-hooks --write`, Claude Code also gets a `UserPromptSubmit` / `SessionStart` hook: when notes are waiting, each prompt injects them as `additionalContext` so the agent can call `reply_annotation` without being asked again.
 | `remove_widget` | Remove one widget. |
 | `clear_canvas` | Remove everything (`undo: true` brings it back). |
 | `ask_user` | Show 2–8 choice cards and wait for your click; returns the choice, or `answered: false` with a reason. |

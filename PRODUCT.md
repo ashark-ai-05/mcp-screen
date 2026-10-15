@@ -134,3 +134,9 @@ A running critique, written as the product owner before each round of work. Shor
 **This round:** OS notification when the agent replies while the tab is hidden (opt-in via clicking the notes pill); Ctrl/Cmd+Z undoes annotation delete (falls back to Clear undo).
 
 **Gaps left:** richer empty-state CTA with the exact install-hooks command to copy; per-canvas notification mute.
+
+## Round 11 (2026-10-16)
+
+**This round:** empty-state **Copy install-hooks** button; README documents the UserPromptSubmit pending-notes injection. Perf still green (gzip 53.6 KB, misses []).
+
+Wrapping the overnight pass here — the three Round-6 launch items plus undo, notifications and discoverability are shipped.
