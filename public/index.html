@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="mcp-screen-token" content="__MCP_SCREEN_TOKEN__" />
+  <title>mcp-screen</title>
+  <link rel="icon" href="/favicon.svg" />
+  <link rel="stylesheet" href="/app.css" />
+</head>
+<body>
+  <header class="top">
+    <div class="brand"><span class="logo"></span>mcp-screen</div>
+    <nav class="tabs" role="tablist">
+      <button class="tab active" data-tab="canvas">Canvas <span class="count" id="count-canvas"></span></button>
+      <button class="tab" data-tab="standup">Standup <span class="count" id="count-standup"></span></button>
+      <button class="tab" data-tab="livemap">Livemap <span class="count" id="count-livemap"></span></button>
+    </nav>
+    <div class="conn" id="conn"><span class="dot"></span><span id="conn-text">connecting</span></div>
+  </header>
+  <main>
+    <section id="view-canvas" class="view active"><div class="grid" id="grid"></div></section>
+    <section id="view-standup" class="view"><div class="board" id="board"></div></section>
+    <section id="view-livemap" class="view"><div class="livemap" id="livemap"></div></section>
+  </main>
+  <script src="/app.js"></script>
+</body>
+</html>

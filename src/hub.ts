@@ -1,0 +1,300 @@
+import { randomBytes } from 'node:crypto';
+import fs from 'node:fs';
+import http from 'node:http';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { LocalApi } from './api.js';
+import { AllowList, describeSource, RefreshScheduler, type Runners } from './refresh.js';
+import { CanvasStore } from './store.js';
+import type { ScreenEvent, Widget } from './types.js';
+
+export const VERSION = '0.1.0';
+const PUBLIC_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'public');
+
+export function screenHome(): string {
+  return process.env.MCP_SCREEN_HOME ?? path.join(os.homedir(), '.mcp-screen');
+}
+
+export interface HubInfo {
+  port: number;
+  token: string;
+  pid: number;
+}
+
+export type AppCallHandler = (widgetId: string, method: string, params: Record<string, unknown>) => Promise<unknown>;
+
+export interface HubOptions {
+  port?: number;
+  host?: string;
+  home?: string | null;
+  runners?: Partial<Runners>;
+  token?: string;
+}
+
+export interface Hub {
+  store: CanvasStore;
+  scheduler: RefreshScheduler;
+  api: LocalApi;
+  url: string;
+  port: number;
+  token: string;
+  setAppCallHandler(h: AppCallHandler): void;
+  close(): Promise<void>;
+}
+
+const MAX_BODY = 2 * 1024 * 1024;
+const ALLOWED_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]']);
+
+class HttpError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+/** A per-widget nonce lets the sandboxed frame load its HTML without ever seeing the API token. */
+const frameNonces = new WeakMap<Widget, string>();
+
+export async function startHub(opts: HubOptions = {}): Promise<Hub> {
+  const home = opts.home === undefined ? screenHome() : opts.home;
+  const token = opts.token ?? randomBytes(24).toString('hex');
+  const store = new CanvasStore();
+  const allow = new AllowList(home ? path.join(home, 'allowlist.json') : null);
+  const scheduler = new RefreshScheduler(store, allow, opts.runners);
+  let appCall: AppCallHandler | undefined;
+  const nonceFor = (w: Widget): string => {
+    let n = frameNonces.get(w);
+    if (!n) {
+      n = randomBytes(16).toString('hex');
+      frameNonces.set(w, n);
+    }
+    return n;
+  };
+
+  const server = http.createServer((req, res) => {
+    handle(req, res).catch((err: unknown) => {
+      const status = err instanceof HttpError ? err.status : 400;
+      send(res, status, { error: (err as Error).message });
+    });
+  });
+
+  const decorate = (w: Widget): Widget & { sourceLabel?: string; frameNonce?: string } => {
+    const out: Widget & { sourceLabel?: string; frameNonce?: string } = { ...w };
+    if (w.source) out.sourceLabel = describeSource(w.source);
+    if (w.kind === 'mcp-app') {
+      const real = store.get(w.id);
+      if (real) out.frameNonce = nonceFor(real);
+      // The browser loads the HTML through /frame, never inline.
+      out.data = { ...w.data, html: undefined };
+    }
+    return out;
+  };
+  const decorateEvent = (e: ScreenEvent): ScreenEvent =>
+    e.type === 'widget' ? { type: 'widget', widget: decorate(e.widget) } : e;
+
+  async function handle(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    const hostname = (req.headers.host ?? '').replace(/:\d+$/, '');
+    if (!ALLOWED_HOSTS.has(hostname)) throw new HttpError(403, 'bad host header (DNS rebinding protection)');
+    const url = new URL(req.url ?? '/', 'http://localhost');
+    const p = url.pathname;
+
+    if (req.method === 'GET' && (p === '/' || p === '/index.html')) {
+      const html = fs.readFileSync(path.join(PUBLIC_DIR, 'index.html'), 'utf8').replace('__MCP_SCREEN_TOKEN__', token);
+      res.writeHead(200, {
+        'content-type': 'text/html; charset=utf-8',
+        'cache-control': 'no-store',
+        'content-security-policy':
+          "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-src 'self'; connect-src 'self'; frame-ancestors 'none'",
+        'x-content-type-options': 'nosniff',
+        'referrer-policy': 'no-referrer',
+      });
+      res.end(html);
+      return;
+    }
+    if (req.method === 'GET' && /^\/[\w-]+\.(js|css|svg)$/.test(p)) {
+      const file = path.join(PUBLIC_DIR, p.slice(1));
+      if (!fs.existsSync(file)) throw new HttpError(404, 'not found');
+      const type = p.endsWith('.js') ? 'text/javascript' : p.endsWith('.css') ? 'text/css' : 'image/svg+xml';
+      res.writeHead(200, { 'content-type': `${type}; charset=utf-8`, 'x-content-type-options': 'nosniff' });
+      res.end(fs.readFileSync(file));
+      return;
+    }
+    const frame = /^\/frame\/([\w.-]+)$/.exec(p);
+    if (req.method === 'GET' && frame) {
+      const w = store.get(decodeURIComponent(frame[1] as string));
+      if (!w || w.kind !== 'mcp-app' || url.searchParams.get('n') !== nonceFor(w)) throw new HttpError(404, 'not found');
+      res.writeHead(200, {
+        'content-type': 'text/html; charset=utf-8',
+        'content-security-policy': frameCsp(w.data.csp),
+        'x-content-type-options': 'nosniff',
+        'referrer-policy': 'no-referrer',
+        'cache-control': 'no-store',
+      });
+      res.end(String(w.data.html));
+      return;
+    }
+
+    if (!p.startsWith('/api/')) throw new HttpError(404, 'not found');
+    const supplied = req.headers['x-mcp-screen-token'] ?? (p === '/api/events' ? url.searchParams.get('token') : null);
+    if (supplied !== token) throw new HttpError(401, 'missing or bad token');
+
+    if (req.method === 'GET' && p === '/api/events') {
+      res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' });
+      res.write(`event: snapshot\ndata: ${JSON.stringify(snapshot())}\n\n`);
+      const sub = store.bus.subscribe();
+      const ping = setInterval(() => res.write(': ping\n\n'), 15000);
+      req.on('close', () => {
+        clearInterval(ping);
+        sub.close();
+      });
+      for await (const e of sub) res.write(`data: ${JSON.stringify(decorateEvent(e))}\n\n`);
+      return;
+    }
+    if (req.method === 'GET' && p === '/api/state') return send(res, 200, { result: snapshot() });
+    if (req.method === 'GET' && p === '/api/canvas') return send(res, 200, { result: store.readCanvas() });
+    if (req.method === 'GET' && p === '/api/allowlist') return send(res, 200, { result: allow.list() });
+
+    const body = req.method === 'GET' || req.method === 'DELETE' ? {} : await readJson(req);
+    if (req.method === 'POST' && p === '/api/widgets') return send(res, 200, { result: await api.place(body as never) });
+    if (req.method === 'POST' && p === '/api/reports') return send(res, 200, { result: store.postReport(body as never) });
+    if (req.method === 'POST' && p === '/api/file-events') return send(res, 200, { result: store.fileEvent(body as never) });
+
+    const m = /^\/api\/widgets\/([^/]+)(?:\/(selection|approve|deny|revoke|refresh|call))?$/.exec(p);
+    if (!m) throw new HttpError(404, 'not found');
+    const id = decodeURIComponent(m[1] as string);
+    const action = m[2];
+    if (!action) {
+      if (req.method === 'GET') return send(res, 200, { result: store.read(id) });
+      if (req.method === 'PATCH') return send(res, 200, { result: store.update(id, body as never) });
+      if (req.method === 'DELETE') return send(res, 200, { result: store.remove(id) });
+    }
+    if (req.method !== 'POST') throw new HttpError(405, 'method not allowed');
+    switch (action) {
+      case 'selection':
+        return send(res, 200, { result: store.setSelection(id, (body as { selection?: unknown }).selection ?? null) });
+      case 'approve':
+        return send(res, 200, { result: scheduler.approve(id) });
+      case 'deny':
+        return send(res, 200, { result: scheduler.deny(id) });
+      case 'revoke':
+        return send(res, 200, { result: scheduler.revoke(id) });
+      case 'refresh':
+        return send(res, 200, { result: await scheduler.refreshNow(id) });
+      case 'call': {
+        const w = store.get(id);
+        if (!w || w.kind !== 'mcp-app') throw new HttpError(404, 'no such app widget');
+        if (!appCall) throw new HttpError(501, 'this canvas is not running `mcp-screen wrap`, so apps cannot call tools');
+        const { method, params } = body as { method: string; params?: Record<string, unknown> };
+        if (method !== 'tools/call' && method !== 'resources/read') throw new HttpError(400, `method ${method} not proxied`);
+        return send(res, 200, { result: await appCall(id, method, params ?? {}) });
+      }
+    }
+    throw new HttpError(404, 'not found');
+  }
+
+  function snapshot() {
+    return {
+      version: VERSION,
+      widgets: store.list().map((w) => decorate(w.kind === 'livemap' ? { ...w, unmappedFiles: store.unmappedFor(w.id) } as Widget : w)),
+      reports: store.listReports(),
+      activity: store.recentActivity(),
+    };
+  }
+
+  const host = opts.host ?? '127.0.0.1';
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(opts.port ?? 4747, host, () => {
+      server.off('error', reject);
+      resolve();
+    });
+  });
+  const port = (server.address() as { port: number }).port;
+  const url = `http://127.0.0.1:${port}`;
+  const api = new LocalApi(store, scheduler, url);
+
+  if (home) {
+    fs.mkdirSync(home, { recursive: true });
+    const info: HubInfo = { port, token, pid: process.pid };
+    fs.writeFileSync(path.join(home, 'hub.json'), JSON.stringify(info), { mode: 0o600 });
+  }
+
+  return {
+    store,
+    scheduler,
+    api,
+    url,
+    port,
+    token,
+    setAppCallHandler: (h) => {
+      appCall = h;
+    },
+    close: async () => {
+      scheduler.stopAll();
+      server.closeAllConnections();
+      await new Promise<void>((r) => server.close(() => r()));
+      if (home) {
+        try {
+          const f = path.join(home, 'hub.json');
+          const cur = JSON.parse(fs.readFileSync(f, 'utf8')) as HubInfo;
+          if (cur.pid === process.pid && cur.port === port) fs.unlinkSync(f);
+        } catch {
+          /* ignore */
+        }
+      }
+    },
+  };
+}
+
+export function readHubInfo(home = screenHome()): HubInfo | null {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(home, 'hub.json'), 'utf8')) as HubInfo;
+  } catch {
+    return null;
+  }
+}
+
+function send(res: http.ServerResponse, status: number, body: unknown): void {
+  if (res.headersSent) return void res.end();
+  res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+  res.end(JSON.stringify(body));
+}
+
+async function readJson(req: http.IncomingMessage): Promise<unknown> {
+  if (!(req.headers['content-type'] ?? '').includes('application/json')) throw new HttpError(415, 'expected application/json');
+  let size = 0;
+  const chunks: Buffer[] = [];
+  for await (const c of req) {
+    size += (c as Buffer).length;
+    if (size > MAX_BODY) throw new HttpError(413, 'body too large');
+    chunks.push(c as Buffer);
+  }
+  const text = Buffer.concat(chunks).toString('utf8');
+  return text ? JSON.parse(text) : {};
+}
+
+/** CSP for an MCP App frame: inline code only, network limited to the domains the resource declared. */
+export function frameCsp(csp: unknown): string {
+  const c = (csp ?? {}) as { connectDomains?: unknown; resourceDomains?: unknown };
+  const clean = (v: unknown): string =>
+    (Array.isArray(v) ? v : [])
+      .filter((d): d is string => typeof d === 'string' && /^https?:\/\/[\w.*:-]+(\/[\w./-]*)?$/.test(d))
+      .join(' ');
+  const res = clean(c.resourceDomains);
+  const conn = clean(c.connectDomains);
+  return [
+    "default-src 'none'",
+    `script-src 'unsafe-inline' ${res}`.trim(),
+    `style-src 'unsafe-inline' ${res}`.trim(),
+    `img-src data: blob: ${res}`.trim(),
+    `font-src data: ${res}`.trim(),
+    `media-src data: blob: ${res}`.trim(),
+    conn ? `connect-src ${conn}` : "connect-src 'none'",
+    "frame-ancestors 'self'",
+    "base-uri 'none'",
+    "form-action 'none'",
+  ].join('; ');
+}

@@ -1,0 +1,56 @@
+{
+  "name": "mcp-screen",
+  "version": "0.1.0",
+  "description": "A screen for terminal agents: MCP Apps, live widgets, a standup board and a live architecture map for Claude Code, Codex and opencode.",
+  "main": "dist/cli.js",
+  "scripts": {
+    "build": "tsc -p . && chmod +x dist/cli.js",
+    "typecheck": "tsc -p . --noEmit && tsc -p test/tsconfig.json --noEmit",
+    "test": "vitest run",
+    "dev": "npm run build && node dist/cli.js serve",
+    "screenshots": "npm run build && node scripts/e2e.mjs",
+    "prepublishOnly": "npm run build && npm test"
+  },
+  "keywords": [
+    "mcp",
+    "mcp-apps",
+    "claude-code",
+    "codex",
+    "opencode",
+    "canvas",
+    "widgets",
+    "agents"
+  ],
+  "author": "Krunal",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "picomatch": "^4.0.7",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "@types/picomatch": "^4.0.3",
+    "playwright": "1.59",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.4"
+  },
+  "type": "module",
+  "bin": {
+    "mcp-screen": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "public",
+    "README.md",
+    "SECURITY.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ashark-ai-05/mcp-screen"
+  }
+}
