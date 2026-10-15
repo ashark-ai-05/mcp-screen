@@ -82,7 +82,9 @@ async function main(argv: string[]): Promise<void> {
     case 'hook': {
       const chunks: Buffer[] = [];
       for await (const c of process.stdin) chunks.push(c as Buffer);
-      await runHook(Buffer.concat(chunks).toString('utf8'));
+      const r = await runHook(Buffer.concat(chunks).toString('utf8'));
+      // UserPromptSubmit / SessionStart: Claude Code reads stdout as additionalContext (JSON).
+      if (r.stdout) process.stdout.write(r.stdout);
       return;
     }
     case 'install-hooks': {

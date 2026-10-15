@@ -462,6 +462,19 @@ await sleep(800);
 const back = await call('read_canvas');
 check('the switcher pill brings back the project canvas with its widgets', back.canvas === homeCanvas && (await page.locator('#grid .card[data-id="long"]').count()) === 1, `${back.canvas} ${await page.locator('#grid .card').count()}`);
 
+// ---- 8d. Alt+click (desktop stand-in for touch long-press) leaves a note on a data point ----
+await page.locator('.card[data-id="long"] .card-body').evaluate((el) => { el.scrollTop = 0; });
+await sleep(200);
+page.once('dialog', async (d) => { await d.accept('why this row?'); });
+await page.locator('.card[data-id="long"] tr[data-pt]').nth(2).click({ modifiers: ['Alt'] });
+await sleep(600);
+const tapNotes = (await call('read_widget', { id: 'long' })).annotations || [];
+check('Alt+click / touch long-press on a row leaves a note with that data point', tapNotes.some((a) => a.kind === 'note' && a.text === 'why this row?' && a.target?.dataPoints?.some((p) => p.rowIndex === 2)), JSON.stringify(tapNotes.map((a) => a.text)));
+
+const link = await page.evaluate(() => window.McpScreenExport.canvasLink());
+const curCanvas = (await call('read_canvas')).canvas;
+check('Share → Copy link names this project canvas in the hash', /#canvas=/.test(link) && link.includes(encodeURIComponent(curCanvas)), link);
+
 // ---- 9. back to canvas for the end of the video ----
 await page.locator('.tab[data-tab="canvas"]').click();
 await sleep(2500);

@@ -717,6 +717,44 @@
     el.replaceChildren(...(list.length > 1 ? pills : []), add);
   }
 
+
+  // ---------- tap a data point to leave a note (touch / Alt+click) ----------
+  const coarse = () => window.matchMedia('(pointer: coarse)').matches;
+  let holdTimer = 0, holdEl = null;
+  function noteAtPoint(el) {
+    const card = el.closest('.card');
+    if (!card) return;
+    const wid = card.dataset.id;
+    let dataPoints;
+    try { dataPoints = [JSON.parse(el.dataset.pt)]; } catch { return; }
+    const r = el.getBoundingClientRect();
+    const [wx, wy] = canvas.toWorld(r.left + r.width / 2, r.top + r.height / 2);
+    const q = prompt('Ask the agent about this:', '');
+    if (q === null) return;
+    const text = (q || '').trim() || 'what is this?';
+    api('POST', '/api/annotations', {
+      kind: 'note',
+      points: [[Math.round(wx - 10), Math.round(wy - 10)]],
+      text,
+      widgetId: wid,
+      dataPoints,
+      color: '#ffd166',
+    }).then(() => toast('Note left for the agent · it will see this on the next turn', null, 3500));
+  }
+  grid.addEventListener('pointerdown', (e) => {
+    const el = e.target.closest && e.target.closest('[data-pt]');
+    if (!el || e.button > 0) return;
+    if (e.altKey) { e.preventDefault(); e.stopPropagation(); noteAtPoint(el); return; }
+    if (!coarse() && e.pointerType !== 'touch') return;
+    holdEl = el;
+    clearTimeout(holdTimer);
+    holdTimer = setTimeout(() => { if (holdEl === el) { holdEl = null; noteAtPoint(el); } }, 480);
+  }, true);
+  const cancelHold = () => { clearTimeout(holdTimer); holdEl = null; };
+  grid.addEventListener('pointerup', cancelHold, true);
+  grid.addEventListener('pointercancel', cancelHold, true);
+  grid.addEventListener('pointermove', (e) => { if (holdEl && (Math.abs(e.movementX) + Math.abs(e.movementY) > 8)) cancelHold(); }, true);
+
   // ---------- live connection ----------
   const conn = document.getElementById('conn');
   const connText = document.getElementById('conn-text');
@@ -733,6 +771,15 @@
       for (const a of snap.activity) perform({ ...a, replay: true });
       renderAll();
       renderCanvasSwitch();
+      // #canvas=<id> from a copied link: switch once after the first snapshot
+      if (!state.hashCanvasDone) {
+        state.hashCanvasDone = true;
+        const m = /^#canvas=([^&]+)/.exec(location.hash);
+        if (m) {
+          const id = decodeURIComponent(m[1]);
+          if (id && id !== state.canvas) api('POST', `/api/canvases/${encodeURIComponent(id)}/open`, {});
+        }
+      }
     });
     es.onopen = () => { conn.classList.add('on'); connText.textContent = `live · ${location.host}`; };
     es.onerror = () => { conn.classList.remove('on'); connText.textContent = 'reconnecting…'; };
@@ -827,7 +874,7 @@
         h('h3', {}, 'Shortcuts'),
         h('div', { class: 'sc-grid' },
           h('div', {}, h('h4', {}, 'Canvas'), row(['drag'], 'pan (on the background)'), row(['scroll'], 'pan'), row(['Ctrl', 'scroll'], 'zoom'), row(['+', '−'], 'zoom in / out'), row(['F'], 'fit everything'), row(['Space', 'drag'], 'pan from anywhere')),
-          h('div', {}, h('h4', {}, 'Talk back to the agent'), row(['V'], 'select / pan'), row(['A'], 'arrow'), row(['O'], 'circle'), row(['H'], 'highlighter'), row(['N'], 'sticky note'), row(['Del'], 'delete the selected mark'), row(['Esc'], 'back to select'))),
+          h('div', {}, h('h4', {}, 'Talk back to the agent'), row(['V'], 'select / pan'), row(['A'], 'arrow'), row(['O'], 'circle'), row(['H'], 'highlighter'), row(['N'], 'sticky note'), row(['hold'], 'long-press a bar/row (or Alt+click) to ask'), row(['Del'], 'delete the selected mark'), row(['Esc'], 'back to select'))),
         h('p', { class: 'muted' }, 'Every mark is attached to the widget and the data points under it, so your agent can read it with read_canvas.'),
         h('div', { class: 'row' }, h('button', { class: 'btn accent', onclick: () => shortcuts(false) }, 'Got it'))));
     document.body.append(sheet);
@@ -875,6 +922,16 @@
   }
   document.getElementById('export-png').addEventListener('click', () => doExport('png'));
   document.getElementById('export-html').addEventListener('click', () => doExport('html'));
+  document.getElementById('copy-canvas-link').addEventListener('click', async () => {
+    shareMenu.classList.remove('open');
+    const link = window.McpScreenExport.canvasLink();
+    try {
+      await navigator.clipboard.writeText(link);
+      toast('Link copied · opens this project canvas on this machine', null, 3500);
+    } catch {
+      prompt('Copy this localhost link:', link);
+    }
+  });
   window.__mcpScreen = { doExport, canvas, state };
 
   setInterval(() => {

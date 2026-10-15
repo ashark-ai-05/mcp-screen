@@ -85,7 +85,7 @@ A widget can carry a command/URL/tool `source` that refreshes with no LLM in the
 </tr>
 </table>
 
-Plus **Share** (PNG or self-contained HTML of the **whole** canvas, not just the view), **named canvases** (one per project, named from the git root by default, with a switcher in the header), and **Clear** (with confirm and undo, or `clear_canvas` from the agent). Circle a bar, type a question, and the agent answers in a thread right next to your mark (`reply_annotation`).
+Plus **Share** (PNG/HTML of the **whole** canvas, filename includes the project; **Copy link** opens that named canvas on localhost), **named canvases** (git root by default, header switcher), and **Clear** (confirm + undo). Circle a bar or **long-press / Alt+click** a row to leave a note; the agent answers in a thread (`reply_annotation`). With `install-hooks`, every prompt injects “N notes waiting on the canvas” when you left questions unanswered.
 
 ## Install
 
@@ -96,7 +96,7 @@ The canvas opens at <http://127.0.0.1:4747>. Several agent sessions share one ca
 
 ```bash
 claude mcp add screen -- npx mcp-screen
-npx mcp-screen install-hooks --write   # optional: standup board + agent theatre
+npx mcp-screen install-hooks --write   # optional: standup, theatre, and “notes waiting” on each prompt
 ```
 </details>
 

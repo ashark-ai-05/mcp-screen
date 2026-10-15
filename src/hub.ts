@@ -210,6 +210,7 @@ export async function startHub(opts: HubOptions = {}): Promise<Hub> {
     if (req.method === 'GET' && p === '/api/state') return send(res, 200, { result: snapshot() });
     if (req.method === 'GET' && p === '/api/canvas') return send(res, 200, { result: { ...store.readCanvas() as object, canvas: book.activeCanvasId, canvases: book.list() } });
     if (req.method === 'GET' && p === '/api/canvases') return send(res, 200, { result: book.list() });
+    if (req.method === 'GET' && p === '/api/pending-questions') return send(res, 200, { result: book.pendingAcross() });
     if (req.method === 'GET' && p === '/api/allowlist') return send(res, 200, { result: allow.list() });
 
     const body = req.method === 'GET' || req.method === 'DELETE' ? {} : await readJson(req);

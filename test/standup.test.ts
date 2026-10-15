@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { agentName, buildFromHook, mergeHooks } from '../src/hook.js';
+import { agentName, buildFromHook, mergeHooks, formatPendingContext, pendingHookOutput, hooksSnippet } from '../src/hook.js';
 import { extractRisks, gitInfo, parseTestOutput, parseTranscript } from '../src/standup.js';
 import { CanvasStore } from '../src/store.js';
 
@@ -112,5 +112,32 @@ describe('standup: hooks', () => {
     const upgraded = mergeHooks(old).hooks as Record<string, Array<{ matcher: string }>>;
     expect(upgraded.PostToolUse).toHaveLength(1);
     expect(upgraded.PostToolUse![0]!.matcher).toBe('Read|Write|Edit|MultiEdit|NotebookEdit');
+  });
+});
+
+describe('pending-notes hook injection', () => {
+  it('formats additionalContext JSON nested under hookSpecificOutput (Claude Code requires that shape)', () => {
+    expect(formatPendingContext([])).toBe('');
+    const qs = [
+      { canvas: 'shop', title: 'shop', id: 'note-1', kind: 'circle', question: 'why?', target: { title: 'CI', dataPoints: [{ label: '10/09', value: 9 }] } },
+      { canvas: 'shop', title: 'shop', id: 'note-2', kind: 'note', question: 'is qty set?' },
+    ];
+    const text = formatPendingContext(qs);
+    expect(text).toMatch(/2 notes waiting/);
+    expect(text).toContain('reply_annotation');
+    expect(text).toContain('note-1');
+    const out = JSON.parse(pendingHookOutput(qs, 'UserPromptSubmit')!);
+    expect(out.additionalContext).toBeUndefined(); // top-level is silently ignored by Claude Code
+    expect(out.hookSpecificOutput.hookEventName).toBe('UserPromptSubmit');
+    expect(out.hookSpecificOutput.additionalContext).toContain('why?');
+    expect(pendingHookOutput([], 'UserPromptSubmit')).toBeNull();
+  });
+
+  it('install-hooks snippet includes UserPromptSubmit and SessionStart', () => {
+    const sn = hooksSnippet();
+    expect(Object.keys(sn.hooks).sort()).toEqual(['PostToolUse', 'SessionStart', 'Stop', 'SubagentStop', 'UserPromptSubmit'].sort());
+    const merged = mergeHooks({ hooks: { Stop: [{ hooks: [{ type: 'command', command: 'npx -y mcp-screen hook', timeout: 15 }] }] } }, sn);
+    expect((merged.hooks as Record<string, unknown[]>).UserPromptSubmit).toBeTruthy();
+    expect((merged.hooks as Record<string, unknown[]>).SessionStart).toBeTruthy();
   });
 });

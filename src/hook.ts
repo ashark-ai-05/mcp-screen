@@ -74,8 +74,47 @@ export function buildFromHook(p: HookPayload): { report?: ReportInput; fileEvent
   return {};
 }
 
-/** `mcp-screen hook`: read stdin, post to the running hub, never block or fail the agent. */
-export async function runHook(stdin: string): Promise<{ posted: 'report' | 'file-event' | 'nothing'; result?: Report | unknown }> {
+export type PendingQ = { canvas: string; title: string; id: string; kind: string; question: string; target?: { title?: string; widgetId?: string; dataPoints?: unknown[] } };
+
+/** Plain text the agent sees when humans left notes it hasn't answered. */
+export function formatPendingContext(qs: PendingQ[]): string {
+  if (!qs.length) return '';
+  const lines = qs.slice(0, 12).map((q, i) => {
+    const where = q.target?.title ? ` on “${q.target.title}”` : '';
+    const pts = Array.isArray(q.target?.dataPoints) && q.target!.dataPoints!.length
+      ? ` · points at ${JSON.stringify(q.target!.dataPoints!.slice(0, 3))}`
+      : '';
+    return `${i + 1}. [${q.kind}${where}] “${q.question}” (id: ${q.id}, canvas: ${q.canvas})${pts}`;
+  });
+  const more = qs.length > 12 ? `
+…and ${qs.length - 12} more.` : '';
+  return (
+    `mcp-screen: you have ${qs.length} note${qs.length === 1 ? '' : 's'} waiting on the canvas. ` +
+    `Call read_canvas (see pendingQuestions) then reply_annotation for each before moving on.\n` +
+    lines.join('\n') + more
+  );
+}
+
+/** Claude Code UserPromptSubmit / SessionStart JSON that injects additionalContext. */
+export function pendingHookOutput(qs: PendingQ[], event: string): string | null {
+  const text = formatPendingContext(qs);
+  if (!text) return null;
+  return JSON.stringify({
+    hookSpecificOutput: { hookEventName: event, additionalContext: text },
+  });
+}
+
+/**
+ * `mcp-screen hook`: read stdin, post to the running hub when appropriate, and for
+ * UserPromptSubmit / SessionStart print additionalContext when notes are waiting.
+ * Never blocks or fails the agent (empty stdout + exit 0 on errors).
+ */
+export async function runHook(stdin: string): Promise<{
+  posted: 'report' | 'file-event' | 'pending-context' | 'nothing';
+  result?: Report | unknown;
+  /** Write this to stdout for Claude Code to inject (UserPromptSubmit / SessionStart). */
+  stdout?: string;
+}> {
   let payload: HookPayload;
   try {
     payload = JSON.parse(stdin) as HookPayload;
@@ -85,6 +124,19 @@ export async function runHook(stdin: string): Promise<{ posted: 'report' | 'file
   const info = readHubInfo();
   if (!info) return { posted: 'nothing' };
   const api = new RemoteApi(`http://127.0.0.1:${info.port}`, info.token);
+  const event = payload.hook_event_name ?? '';
+
+  if (event === 'UserPromptSubmit' || event === 'SessionStart') {
+    try {
+      const qs = (await api.pendingQuestions()) as PendingQ[];
+      const out = pendingHookOutput(Array.isArray(qs) ? qs : [], event);
+      if (out) return { posted: 'pending-context', stdout: out };
+    } catch {
+      /* hub gone */
+    }
+    return { posted: 'nothing' };
+  }
+
   const built = buildFromHook(payload);
   try {
     if (built.report) return { posted: 'report', result: await api.postReport(built.report) };
@@ -101,19 +153,14 @@ export function hooksSnippet(command = 'npx -y mcp-screen hook') {
       Stop: [{ hooks: [{ type: 'command', command, timeout: 15 }] }],
       SubagentStop: [{ hooks: [{ type: 'command', command, timeout: 15 }] }],
       PostToolUse: [{ matcher: 'Read|Write|Edit|MultiEdit|NotebookEdit', hooks: [{ type: 'command', command, timeout: 5 }] }],
+      // Inject “N notes waiting on the canvas” when the human left questions the agent hasn't answered.
+      UserPromptSubmit: [{ hooks: [{ type: 'command', command, timeout: 5 }] }],
+      SessionStart: [{ hooks: [{ type: 'command', command, timeout: 5 }] }],
     },
   };
 }
 
-export const HOOKS_SNIPPET = {
-  hooks: {
-    Stop: [{ hooks: [{ type: 'command', command: 'npx -y mcp-screen hook', timeout: 15 }] }],
-    SubagentStop: [{ hooks: [{ type: 'command', command: 'npx -y mcp-screen hook', timeout: 15 }] }],
-    PostToolUse: [
-      { matcher: 'Read|Write|Edit|MultiEdit|NotebookEdit', hooks: [{ type: 'command', command: 'npx -y mcp-screen hook', timeout: 5 }] },
-    ],
-  },
-};
+export const HOOKS_SNIPPET = hooksSnippet();
 
 /** Merge our hooks into an existing settings object without duplicating them. */
 export function mergeHooks(settings: Record<string, unknown>, snippet = HOOKS_SNIPPET): Record<string, unknown> {

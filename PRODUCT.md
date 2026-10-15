@@ -92,3 +92,19 @@ A running critique, written as the product owner before each round of work. Shor
 1. An optional Claude Code hook that injects “you have N notes waiting on the canvas” when `pendingQuestions` is non-empty.
 2. Tap a chart bar / table row on touch devices to leave a note without drawing.
 3. Per-canvas Share filename and a “copy link to this canvas” that is still localhost-only but names the project.
+
+## Round 7 (2026-10-16)
+
+**Who it's for:** unchanged. The agent still only answered notes when the human happened to ask — the canvas never poked the next turn.
+
+**First 60 seconds / next turn:** with `install-hooks`, submitting any prompt now injects pending notes into Claude's context (UserPromptSubmit + SessionStart). Touch users can long-press a bar or row instead of drawing a circle.
+
+**What would make someone star or share it.** The agent noticing your notes without you re-explaining them, and a Share link that opens the right project canvas.
+
+**This round:**
+- Hook: `UserPromptSubmit` / `SessionStart` → `additionalContext` with pending questions (nested under `hookSpecificOutput`, the shape Claude Code actually reads).
+- Touch: long-press / Alt+click a `[data-pt]` to leave a note with that data point.
+- Share: filenames include the project slug; **Copy link** → `#canvas=<id>` localhost URL.
+
+## Round 8 (planned while polishing)
+Tightening README, shortcuts, and any remaining first-run friction after Round 7.

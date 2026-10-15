@@ -83,6 +83,15 @@ export class CanvasBook {
     return e;
   }
 
+  /** Pending annotation questions across every named canvas (for the agent hook). */
+  pendingAcross(): Array<{ canvas: string; title: string; id: string; kind: string; question: string; target?: unknown }> {
+    const out: Array<{ canvas: string; title: string; id: string; kind: string; question: string; target?: unknown }> = [];
+    for (const [id, e] of this.entries) {
+      for (const q of e.store.pendingQuestions()) out.push({ canvas: id, title: e.title, ...q });
+    }
+    return out;
+  }
+
   list(): CanvasInfo[] {
     return [...this.entries.entries()]
       .map(([id, e]) => ({ id, title: e.title, updatedAt: e.updatedAt, widgets: e.store.list().length, annotations: e.store.listAnnotations().length, active: id === this.activeId }))

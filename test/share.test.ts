@@ -43,6 +43,7 @@ describe('share: static HTML export', () => {
     const html = ex.buildStaticHtml({ css, fontDataUrl: null, title: 't', bodyHtml: '', when: '' });
     expect(html).not.toContain('@font-face');
     expect(ex.slug(new Date(2026, 9, 15, 9, 5, 7))).toBe('mcp-screen-20261015-090507');
+    expect(ex.slug(new Date(2026, 9, 15, 9, 5, 7), 'Shop App')).toBe('mcp-screen-shop-app-20261015-090507');
   });
 
   it('keeps a full-canvas PNG inside browser canvas limits', () => {

@@ -28,9 +28,21 @@
 </body></html>`;
   }
 
-  function slug(d = new Date()) {
+  function slug(d = new Date(), canvasName) {
     const p = (n) => String(n).padStart(2, '0');
-    return `mcp-screen-${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+    const project = String(canvasName || (root.__mcpScreen && root.__mcpScreen.state && root.__mcpScreen.state.canvas) || '')
+      .toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+    const stamp = `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+    return project ? `mcp-screen-${project}-${stamp}` : `mcp-screen-${stamp}`;
+  }
+
+  /** Localhost URL that opens this named canvas (token in the hash so it never hits the server log as a query). */
+  function canvasLink() {
+    const st = root.__mcpScreen && root.__mcpScreen.state;
+    const id = (st && st.canvas) || 'default';
+    const u = new URL(location.href);
+    u.hash = `canvas=${encodeURIComponent(id)}`;
+    return u.toString();
   }
 
   // ---------- browser-only below ----------
@@ -157,5 +169,5 @@
     return blob;
   }
 
-  root.McpScreenExport = { buildStaticHtml, slug, escapeHtml, pngScale, exportHtml, exportPng };
+  root.McpScreenExport = { buildStaticHtml, slug, escapeHtml, pngScale, exportHtml, exportPng, canvasLink };
 })(typeof window !== 'undefined' ? window : globalThis);
