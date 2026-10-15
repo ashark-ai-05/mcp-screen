@@ -6,7 +6,7 @@ import { CanvasStore } from '../src/store.js';
 
 type ExportApi = {
   buildStaticHtml(o: { css: string; fontDataUrl: string | null; title: string; bodyHtml: string; when: string }): string;
-  slug(d?: Date): string;
+  slug(d?: Date, canvasName?: string): string;
   pngScale(w: number, h: number, want?: number): number;
 };
 function loadExport(): ExportApi {
