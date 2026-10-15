@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 160" width="640" height="160" role="img" aria-label="mcp-screen">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#151a2e"/><stop offset="1" stop-color="#0b0d18"/></linearGradient>
+    <linearGradient id="ac" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#a5b8ff"/><stop offset="1" stop-color="#7c6cff"/></linearGradient>
+    <radialGradient id="glow" cx=".22" cy=".3" r=".6"><stop offset="0" stop-color="#7c9cff" stop-opacity=".35"/><stop offset="1" stop-color="#7c9cff" stop-opacity="0"/></radialGradient>
+  </defs>
+  <rect width="640" height="160" rx="28" fill="url(#bg)"/>
+  <rect width="640" height="160" rx="28" fill="url(#glow)"/>
+  <rect x=".5" y=".5" width="639" height="159" rx="27.5" fill="none" stroke="#ffffff" stroke-opacity=".08"/>
+  <g transform="translate(48 34)">
+    <rect x="0" y="0" width="92" height="64" rx="14" fill="url(#ac)"/>
+    <rect x="12" y="12" width="30" height="40" rx="6" fill="#0d1017"/>
+    <rect x="50" y="12" width="30" height="16" rx="5" fill="#0d1017"/>
+    <rect x="50" y="36" width="30" height="16" rx="5" fill="#0d1017"/>
+    <rect x="30" y="74" width="32" height="8" rx="4" fill="url(#ac)"/>
+  </g>
+  <text x="172" y="96" font-family="Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="58" font-weight="700" letter-spacing="-1.5" fill="#f4f6ff">mcp<tspan fill="url(#ac)">-</tspan>screen</text>
+  <text x="174" y="126" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="15" fill="#8a93b8">a screen for your terminal agent</text>
+</svg>
