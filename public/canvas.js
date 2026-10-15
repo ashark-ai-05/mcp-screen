@@ -36,7 +36,8 @@
       const cell = Math.max(8, 26 * view.z);
       if (cell !== dotsCell) { dotsCell = cell; dots.style.backgroundSize = `${cell}px ${cell}px`; }
       dots.style.transform = `translate(${(((view.x % cell) + cell) % cell)}px, ${(((view.y % cell) + cell) % cell)}px)`;
-      zoomLabel.textContent = `${Math.round(view.z * 100)}%`;
+      const zl = `${Math.round(view.z * 100)}%`;
+      if (zoomLabel.textContent !== zl) zoomLabel.textContent = zl; // an identical write still invalidates paint
       // while the view moves, the world is one composited layer and animations pause, so a pan or
       // zoom is a GPU transform, not a repaint of every card; it re-rasters sharply 160 ms after
       if (!stage.classList.contains('moving')) stage.classList.add('moving');
@@ -68,6 +69,17 @@
         const off = w.x > x1 || w.y > y1 || w.x + width < x0 || w.y + height < y0;
         if (off !== card.classList.contains('culled')) card.classList.toggle('culled', off);
       }
+    }
+    // centre one widget in the usable area at a given zoom (used by "reveal" and by tests)
+    function focusOn(id, z = 1) {
+      const w = state.widgets.get(id);
+      if (!w) return;
+      const r = stageRect();
+      const { width, height } = sizeOf(w);
+      view.z = z;
+      view.x = 76 + (r.width - 76 - 24) / 2 - (w.x + width / 2) * z;
+      view.y = Math.max(24, (r.height - height * z) / 2) - w.y * z;
+      apply();
     }
     const panBy = (dx, dy) => { view.x += dx; view.y += dy; apply(); };
     function zoomAt(z, cx, cy) {
@@ -472,6 +484,6 @@
 
     window.addEventListener('resize', () => schedule());
     apply();
-    return { position, renderAnnotations, fit, drawMinimap, view, setTool, toWorld, bounds, cull: schedule, panBy, zoomAt, tidy, columnsForView };
+    return { position, renderAnnotations, fit, drawMinimap, view, setTool, toWorld, bounds, cull: schedule, panBy, zoomAt, tidy, columnsForView, focusOn };
   };
 })(typeof window !== 'undefined' ? window : globalThis);

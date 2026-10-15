@@ -143,8 +143,11 @@
     function renderImage(w) {
       const d = w.data;
       const img = h('img', { src: w.imageSrc || '', alt: d.alt || w.title, referrerpolicy: 'no-referrer', draggable: 'false', style: { objectFit: d.fit || 'contain' } });
-      const box = h('div', { class: 'img-w' }, img);
-      img.addEventListener('error', () => box.replaceChildren(h('div', { class: 'err' }, d.url ? `Couldn't load ${d.url}` : `Couldn't read ${d.path} (moved, or no longer an image?)`)));
+      const box = h('div', { class: 'img-w loading' }, img);
+      img.style.opacity = '0';
+      img.addEventListener('load', () => { box.classList.remove('loading'); img.style.transition = 'opacity .4s'; img.style.opacity = '1'; });
+      img.addEventListener('error', () => box.classList.remove('loading'));
+      img.addEventListener('error', () => box.replaceChildren(h('div', { class: 'empty-w err-w' }, h('b', { class: 'ew-x' }, '!'), d.url ? `Couldn't load ${d.url}` : `Couldn't read ${d.path} (moved, or no longer an image?)`)));
       return h('figure', { class: 'image' }, box, d.caption ? h('figcaption', {}, d.caption) : null);
     }
 
@@ -290,7 +293,7 @@
           s('circle', { class: 'halo', cx: x, cy: y, r: r * 1.8 }), s('circle', { class: 'dot', cx: x, cy: y, r, 'stroke-width': u * 1.5 }),
           s('text', { x: x + r + 4 * u, y: y + 4 * u, 'font-size': u * 11, 'stroke-width': u * 3, 'text-anchor': x + r + 90 * u > vx + vw ? 'end' : 'start', dx: x + r + 90 * u > vx + vw ? -(2 * r + 8 * u) : 0 }, m.value !== undefined ? `${m.label} · ${m.value}` : m.label), s('title', {}, m.label)));
       });
-      return h('div', { class: 'map-w' }, svg, h('span', { class: 'attrib' }, 'Natural Earth · offline'));
+      return h('div', { class: 'map-w' }, svg, markers.length ? null : h('span', { class: 'geo-empty' }, 'No markers yet'), h('span', { class: 'attrib' }, 'Natural Earth · offline'));
     }
 
     // ---------- timeline ----------

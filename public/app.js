@@ -227,6 +227,41 @@
 
   const STATUS_LABEL = { live: 'live', 'needs-approval': 'needs approval', error: 'error', denied: 'denied' };
 
+  // ---------- empty + loading states: every kind gets one, so a card is never a blank box ----------
+  const EMPTY_ICON = {
+    chart: 'M3 13V8M7 13V4M11 13V9M2 13.5h12', table: 'M2 3h12v10H2zM2 6.5h12M6 3v10', log: 'M3 4h10M3 7h7M3 10h9M3 13h5',
+    checklist: 'M3 4l1.5 1.5L7 3M3 9l1.5 1.5L7 8M9 4h4M9 9h4M3 13h10', timeline: 'M2 8h12M4 8a1 1 0 1 0 .01 0M8 8a1 1 0 1 0 .01 0M12 8a1 1 0 1 0 .01 0',
+    code: 'M6 4L2 8l4 4M10 4l4 4-4 4', diff: 'M5 2v8M2 5h6M9 13h5', map: 'M2 4l4-2 4 2 4-2v10l-4 2-4-2-4 2z', 'status-list': 'M4 4a1 1 0 1 0 .01 0M4 8a1 1 0 1 0 .01 0M4 12a1 1 0 1 0 .01 0M7 4h7M7 8h7M7 12h7',
+    default: 'M3 3h10v10H3zM3 7h10',
+  };
+  function emptyFor(w) {
+    const d = w.data || {};
+    const live = w.source && w.status === 'live' && !w.lastRefreshedAt;
+    const wait = live ? 'Waiting for the first refresh…' : null;
+    switch (w.kind) {
+      case 'chart': return !(d.values || []).length && (wait || 'No data points yet');
+      case 'table': return !(d.rows || []).length && (wait || (d.columns?.length ? `No rows yet · ${d.columns.join(' · ')}` : 'No rows yet'));
+      case 'markdown': return !String(d.markdown ?? '').trim() && (wait || 'Nothing written yet');
+      case 'text': return !String(d.text ?? '').trim() && (wait || 'Nothing written yet');
+      case 'metric': return (d.value === undefined || d.value === '') && (wait || 'No value yet');
+      case 'kv': return !Object.keys(d.items || {}).length && (wait || 'No values yet');
+      case 'status-list': return !(d.items || []).length && (wait || 'Nothing to report yet');
+      case 'code': return !String(d.code ?? '').length && 'No code yet';
+      case 'diff': return d.files && !d.files.some((f) => f.added || f.removed) && 'No changes · both sides are identical';
+      case 'log': return !(d.lines || []).length && (live || w.source ? 'Waiting for output…' : 'No output yet');
+      case 'checklist': return !(d.items || []).length && 'No steps yet';
+      case 'timeline': return !(d.items || []).length && 'No events yet';
+      default: return false;
+    }
+  }
+  function emptyState(w, text) {
+    const waiting = /Waiting/.test(text);
+    return h('div', { class: `empty-w${waiting ? ' waiting' : ''}` },
+      s('svg', { viewBox: '0 0 16 16', class: 'ew-ico', fill: 'none', stroke: 'currentColor', 'stroke-width': 1.3, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, s('path', { d: EMPTY_ICON[w.kind] || EMPTY_ICON.default })),
+      h('span', {}, text),
+      waiting ? h('i', { class: 'ew-bar' }) : null);
+  }
+
   function card(w) {
     const body = h('div', { class: 'card-body' });
     if (w.status === 'needs-approval' && w.source) {
@@ -239,7 +274,9 @@
     }
     if (w.error) body.append(h('div', { class: 'err' }, w.error));
     try {
-      body.append((RENDER[w.kind] || RENDER.text)(w));
+      const empty = emptyFor(w);
+      if (empty) body.append(emptyState(w, empty));
+      else body.append((RENDER[w.kind] || RENDER.text)(w));
     } catch (e) {
       body.append(h('div', { class: 'err' }, `render failed: ${e.message}`));
     }
@@ -327,11 +364,17 @@
     old.replaceWith(c);
   }
   /** Glide to a new widget the agent placed outside the current view. */
+  // a new widget must be fully visible: fit everything if that stays readable, else pan to the new one
   function reveal(w) {
     const r = stage.getBoundingClientRect();
     const v = canvas.view;
-    const x0 = -v.x / v.z, y0 = -v.y / v.z, x1 = x0 + r.width / v.z, y1 = y0 + r.height / v.z;
-    if (w.x > x1 - 40 || w.y > y1 - 40 || w.x < x0 - 200 || w.y < y0 - 100) canvas.fit();
+    const W = w.w * 300 + (w.w - 1) * 16, H = w.h * 150 + (w.h - 1) * 16;
+    const sx = w.x * v.z + v.x, sy = w.y * v.z + v.y;
+    if (sx >= 60 && sy >= 0 && sx + W * v.z <= r.width - 10 && sy + H * v.z <= r.height - 10) return;
+    const b = canvas.bounds();
+    const fitZ = b ? Math.min((r.width - 400) / (b.x1 - b.x0), (r.height - 56) / (b.y1 - b.y0)) : 1;
+    if (fitZ >= 0.45) canvas.fit();
+    else canvas.focusOn(w.id, Math.max(0.6, Math.min(1, v.z)));
   }
 
   const board = document.getElementById('board');

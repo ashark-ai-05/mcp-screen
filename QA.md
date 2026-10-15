@@ -67,3 +67,39 @@ Load average while measuring: 6.6 / 10.3 / 9.4 (8 cores). Under heavier load fro
 7. **Ask cards:** the spinning border on open questions rotated the whole overlay instead of the gradient, drawing a diagonal line across the card.
 8. **Toolbar:** colour swatches were invisible because `style: {'--c': …}` was dropped by `Object.assign(el.style)`; custom properties now use `setProperty`.
 9. **Annotation labels:** labels near a card edge wrapped one letter per line ("why?" rendered vertically).
+
+## Round 2 (2026-10-16)
+
+**Method change (stated honestly):** frames are now measured in steady state, after every card's entrance animation has finished (round 1 started measuring while some were still running). The numbers below are lower partly for that reason.
+
+| Metric | Result | Budget |
+|---|---|---|
+| First paint | 96 ms | < 300 |
+| Placement median / p90 | 9 / 29 ms | < 50 |
+| Pan @100% main-thread/frame (headless fps) | 3.7 ms (37) | ≤ 8 |
+| Pan @fit, all 120 visible | 7.2 ms (29) | ≤ 8 |
+| Zoom | 7.6 ms (23) | ≤ 8 |
+| CLS | 0.0001 | ≤ 0.02 |
+| Up-front bundle | 48.9 KB gzip | ≤ 80 |
+| Console errors | 0 | 0 |
+
+Load average while measuring: 10.7 / 20.8 / 14.1 (the box was busy with other jobs). An earlier run at load ~5, *before* the steady-state change, measured pan@fit at 8.25 ms, a budget miss. That led to the fix below, and the round was not pushed until the budget held.
+
+**Suites:**
+- typecheck clean
+- unit 94/94
+- e2e 40/40
+- UX 42/42 (4 viewports)
+- soak PASS: 25 cycles, DOM +4 nodes, heap flat, 0 console errors
+- empty-state sweep: every kind placed with empty data renders an icon and message; 0 page errors. The only console line is the expected network failure of a deliberately unreachable image URL.
+
+**Bugs found and fixed:**
+1. The README's `6-ask-user.png` (and `5-wrap-mcp-app.png`, which had the zoom bar over it) were broken crops: Playwright element screenshots don't follow the transformed canvas. The new e2e `cardShot` centres the card at 100 % and hides the chrome.
+2. A new widget could land partly off-screen: `reveal` only checked its top-left corner, so a live widget's **Approve** button sat below the fold, and e2e timed out clicking it. Now the whole card must be visible; otherwise the canvas fits, or pans to the card if fitting would go below 45 % zoom.
+3. The zoom label was rewritten every frame with an identical string, which still invalidates paint. It's now written only when it changes.
+4. 13 kinds rendered a blank card for empty data. Each now has an empty state, and live widgets show "Waiting for the first refresh…".
+5. `timeline` rejected an empty list, unlike `checklist` or `log`. It now accepts one (capped at 500 events).
+
+**Media:**
+- `screenshots/hero.gif` (960 px, 4.8 MB, ~32 s), `screenshots/hero.mp4` and `screenshots/hero.png`
+- refreshed `1-canvas`, `2a-live-needs-approval`, `5-wrap-mcp-app` and `6-ask-user`

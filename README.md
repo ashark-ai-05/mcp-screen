@@ -2,9 +2,9 @@
 
 <img src="docs/logo.svg" alt="mcp-screen" width="520">
 
-### Your terminal agent can finally show you things.
+### Your terminal agent can finally show you things, and you can point back.
 
-Charts, tables, MCP Apps, visual questions and a live map of what your agents are doing, on a local canvas next to your terminal. One command.
+An infinite canvas next to your terminal. Your agent puts charts, diffs, flows, logs, plans and maps on it. You circle the bar that looks wrong and type "why?", and the agent reads exactly what you pointed at. Local, one command, no API keys.
 
 [![CI](https://github.com/ashark-ai-05/mcp-screen/actions/workflows/ci.yml/badge.svg)](https://github.com/ashark-ai-05/mcp-screen/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/license-MIT-7c9cff.svg)](LICENSE) [![MCP server](https://img.shields.io/badge/MCP-server-7c6cff.svg)](https://modelcontextprotocol.io) [![MCP Apps](https://img.shields.io/badge/MCP%20Apps-supported-a5b8ff.svg)](https://github.com/modelcontextprotocol/ext-apps) [![Node ≥ 20](https://img.shields.io/badge/node-%E2%89%A520-3c873a.svg)](package.json)
 
@@ -12,9 +12,9 @@ Charts, tables, MCP Apps, visual questions and a live map of what your agents ar
 claude mcp add screen -- npx mcp-screen
 ```
 
-<img src="screenshots/demo.gif" alt="mcp-screen demo: a dashboard lands, the agent asks a visual question, then agents animate across the live architecture map" width="100%">
+<img src="screenshots/hero.gif" alt="mcp-screen: widgets land on the canvas, a person circles the spike in a chart and types why?, and the agent reads the circled bar back through read_canvas" width="100%">
 
-<sub>The terminal pane in the demo is **scripted** (it says so on screen): no model is running. Everything on the right is real: each widget comes from a real MCP tool call to a real mcp-screen process, the question card is a real blocking `ask_user` call answered by a real click, and the theatre is driven by real `PostToolUse` hook payloads sent through `mcp-screen hook` (`scripts/record-demo.mjs`, also as [demo.mp4](screenshots/demo.mp4)).</sub>
+<sub>The agent in this clip is **scripted** (labelled on screen): no model is running. Everything else is real. Each widget comes from a real MCP tool call to a real mcp-screen process, the circle is drawn with real mouse input, and the caption quotes what `read_canvas` actually returned (`scripts/record-hero.mjs`, also as [hero.mp4](screenshots/hero.mp4)). The older demo of `ask_user` and the agent theatre is [demo.gif](screenshots/demo.gif).</sub>
 
 [Why](#why) · [Features](#features) · [Install](#install) · [Tools](#tools) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md)
 
@@ -25,6 +25,8 @@ claude mcp add screen -- npx mcp-screen
 Claude Code, Codex, opencode, Amp, Cursor CLI and Gemini CLI live in a terminal, and a terminal can't show a chart, a table, or the UIs that MCP servers now ship as [MCP Apps](https://github.com/modelcontextprotocol/ext-apps). Those UIs reach a terminal agent as a wall of JSON, and when the agent needs a decision you get a numbered list to type back into.
 
 mcp-screen opens a browser tab next to your terminal and gives the agent somewhere to put things, and gives you something to click. It runs entirely on your machine (`127.0.0.1`, token-protected, nothing uploaded).
+
+First time? Run `npx mcp-screen serve`, then click **Try a sample canvas** to play with it before wiring up an agent. Press `?` for shortcuts. It stays smooth with 100+ widgets (off-screen cards are culled; measured budgets in [QA.md](QA.md)).
 
 ## Features
 
@@ -262,7 +264,11 @@ npm install
 npm run build
 npm test                # vitest unit tests, one file per part
 npm run screenshots     # end-to-end: real stdio MCP client, hooks, Playwright screenshots + GIF
-npm run demo            # records the launch demo: screenshots/demo.gif + demo.mp4 + hero.png
+npm run demo            # records the ask_user + theatre demo: screenshots/demo.gif + demo.mp4
+node scripts/record-hero.mjs  # records the README hero: screenshots/hero.gif + hero.mp4 + hero.png
+npm run ux              # first-timer checks at 4 viewport sizes (screenshots/ux/)
+npm run soak            # 25 clear/undo/re-place cycles through the UI; DOM + heap must stay flat
+npm run perf            # performance budgets with 120 widgets (see QA.md)
 npm run interop         # renders the official ext-apps basic-server-vanillajs example through wrap
 ```
 

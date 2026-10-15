@@ -88,7 +88,9 @@ for (let i = 0; i < 20; i++) lat.push(await place(i));
 const placeMs = lat.sort((a, b) => a - b)[10];
 for (let i = 20; i < N; i++) hub.store.place({ id: `w${i}`, ...kinds[i % kinds.length](i) });
 await page.waitForFunction((n) => document.querySelectorAll('.card').length >= n, N, { timeout: 30000 });
-await page.waitForTimeout(800);
+// steady state: let every card's entrance animation finish before measuring frames
+await page.waitForFunction(() => document.getAnimations().every((a) => a.effect?.getTiming().iterations === Infinity || a.playState !== 'running'), null, { timeout: 15000 });
+await page.waitForTimeout(300);
 
 // 3. pan + zoom at 100% with N widgets: frame times over ~2 s
 await page.evaluate(() => window.__mcpScreen.canvas.fit(false));

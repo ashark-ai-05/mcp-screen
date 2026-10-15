@@ -184,6 +184,6 @@ describe('log, checklist, code, map, timeline', () => {
     expect(() => s.place({ kind: 'map', title: 'm', data: { markers: [{ lat: 95, lon: 0, label: 'x' }] } })).toThrow();
     expect(() => s.place({ kind: 'map', title: 'm', data: { markers: [{ lat: 0, lon: 0, label: 'x', color: 'red;}' }] } })).toThrow();
     expect(s.place({ kind: 'timeline', title: 't', data: { items: [{ at: '2026-10-01', title: 'Kick-off', status: 'ok' }] } }).w).toBe(4);
-    expect(() => s.place({ kind: 'timeline', title: 't', data: { items: [] } })).toThrow();
+    expect(s.place({ kind: 'timeline', title: 't', data: { items: [] } }).data.items).toEqual([]); // empty state, filled in later
   });
 });

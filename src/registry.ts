@@ -187,7 +187,7 @@ export const kindSchemas: Record<WidgetKind, z.ZodType<Record<string, unknown>>>
             status: z.enum(['ok', 'fail', 'pending', 'info']).optional(),
           }),
         )
-        .min(1),
+        .max(500),
     })
     .passthrough(),
   livemap: z

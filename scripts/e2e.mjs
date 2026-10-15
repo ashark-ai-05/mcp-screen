@@ -52,6 +52,15 @@ const ctx = await browser.newContext({ acceptDownloads: true,
   ...(GIF ? { recordVideo: { dir: path.join(HOME, 'video'), size: { width: 1440, height: 900 } } } : {}),
 });
 const page = await ctx.newPage();
+// screenshot one card: centre it at 100% and hide the canvas chrome for the shot
+const cardShot = async (sel, file) => {
+  const id = await page.locator(sel).first().getAttribute('data-id');
+  await page.evaluate((id) => window.__mcpScreen.canvas.focusOn(id, 1), id);
+  const st = await page.addStyleTag({ content: '.toolbar,.zoombar,.minimap,.notes-count,.toast{visibility:hidden!important}' });
+  await sleep(400);
+  await page.locator(sel).first().screenshot({ path: path.join(SHOTS, file) });
+  await st.evaluate((n) => n.remove());
+};
 await page.goto(URL_);
 await page.waitForSelector('.conn.on');
 await sleep(800);
@@ -97,7 +106,7 @@ const origin = await page.evaluate(() => {
 });
 check('app iframe is cross-origin (null origin sandbox)', origin === 'blocked' && (await page.locator('iframe.app-frame').getAttribute('sandbox')) === 'allow-scripts allow-forms');
 await page.screenshot({ path: path.join(SHOTS, '1-canvas.png') });
-await page.locator('.card.app').screenshot({ path: path.join(SHOTS, '5-wrap-mcp-app.png') });
+await cardShot('.card.app', '5-wrap-mcp-app.png');
 
 // a second agent session (another `npx mcp-screen`) attaches to the same canvas
 const second = new Client({ name: 'e2e-agent-2', version: '1.0.0' });
@@ -240,7 +249,7 @@ const asked = call('ask_user', { question: 'Which pricing layout should I build?
   { id: 'table', label: 'Comparison table', description: 'Feature matrix', preview: '- 12 rows\n- sticky header' } ] });
 await page.locator('.card.question .choice').first().waitFor();
 await sleep(700);
-await page.locator('.card.question').screenshot({ path: path.join(SHOTS, '6-ask-user.png') });
+await cardShot('.card.question', '6-ask-user.png');
 await page.locator('.choice[data-choice="slider"]').click();
 const answer = await asked;
 check('ask_user returns the clicked choice', answer.answered === true && answer.choice?.id === 'slider', JSON.stringify(answer));
