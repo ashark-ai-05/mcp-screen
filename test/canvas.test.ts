@@ -92,10 +92,10 @@ describe('infinite canvas: HTTP + MCP', () => {
     await createScreenServer(hub.api).connect(st);
     const client = new Client({ name: 't', version: '1' });
     await client.connect(ct);
-    const tidied = JSON.parse((await client.callTool({ name: 'tidy_canvas', arguments: {} })).content[0].text);
+    const tidied = JSON.parse(((await client.callTool({ name: 'tidy_canvas', arguments: {} })).content as { text: string }[])[0]!.text);
     expect(tidied.positions).toEqual([{ id: 'a', x: 0, y: 0 }]);
     await client.callTool({ name: 'update_widget', arguments: { id: 'a', x: 40, y: 50 } });
-    const canvas = JSON.parse((await client.callTool({ name: 'read_canvas', arguments: {} })).content[0].text);
+    const canvas = JSON.parse(((await client.callTool({ name: 'read_canvas', arguments: {} })).content as { text: string }[])[0]!.text);
     expect(canvas.widgets[0]).toMatchObject({ x: 40, y: 50 });
     expect(canvas.annotations).toEqual([]);
     await client.close();

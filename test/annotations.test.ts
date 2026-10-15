@@ -72,9 +72,9 @@ describe('annotations', () => {
     const unauth = await fetch(`${hub.url}/api/annotations`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
     expect(unauth.status).toBe(401);
     const remote = new RemoteApi(hub.url, hub.token);
-    const canvas = JSON.parse((await callScreenTool(remote, 'read_canvas', {}))!.content[0]!.text as string);
+    const canvas = JSON.parse(((await callScreenTool(remote, 'read_canvas', {}))!.content[0] as { text: string }).text);
     expect(canvas.annotations[0]).toMatchObject({ kind: 'circle', text: 'why?', target: { widgetId: 'ci', dataPoints: [{ label: 'a', value: 1 }] } });
-    const w = JSON.parse((await callScreenTool(remote, 'read_widget', { id: 'ci' }))!.content[0]!.text as string);
+    const w = JSON.parse(((await callScreenTool(remote, 'read_widget', { id: 'ci' }))!.content[0] as { text: string }).text);
     expect(w.annotations).toHaveLength(1);
     const id = canvas.annotations[0].id;
     const del = await fetch(`${hub.url}/api/annotations/${id}`, { method: 'DELETE', headers: { 'x-mcp-screen-token': hub.token } });

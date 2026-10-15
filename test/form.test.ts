@@ -77,7 +77,7 @@ describe('ask_form', () => {
     expect((await submit({})).status).toBe(400);
     expect((await submit({ name: 'api', users: 10, region: 'iad' })).status).toBe(200);
     const res = await pending;
-    expect(JSON.parse(res.content[0].text)).toEqual({ submitted: true, values: { name: 'api', users: 10, region: 'iad', budget: null, dry: false } });
+    expect(JSON.parse((res.content as { text: string }[])[0]!.text)).toEqual({ submitted: true, values: { name: 'api', users: 10, region: 'iad', budget: null, dry: false } });
     expect((await client.callTool({ name: 'place_widget', arguments: { kind: 'form', title: 'x', data: {} } })).isError).toBe(true);
     await client.close();
   });
