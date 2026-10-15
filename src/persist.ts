@@ -37,8 +37,8 @@ export function snapshot(store: CanvasStore): Snapshot {
   return { version: VERSION, savedAt: new Date().toISOString(), widgets: store.list().filter(keep), annotations: store.listAnnotations() };
 }
 
-export function startPersistence(home: string, store: CanvasStore, delayMs = 300): { flush(): void; stop(): void } {
-  const file = path.join(home, CANVAS_FILE);
+export function startPersistence(home: string, store: CanvasStore, delayMs = 300, fileName = CANVAS_FILE): { flush(): void; stop(): void } {
+  const file = path.join(home, fileName);
   let timer: NodeJS.Timeout | null = null;
   const write = (): void => {
     timer = null;
@@ -62,11 +62,11 @@ export function startPersistence(home: string, store: CanvasStore, delayMs = 300
 }
 
 /** Restore a saved canvas. Returns how many widgets and annotations came back, and how many were skipped. */
-export async function restore(home: string, store: CanvasStore, api: ScreenApi): Promise<{ widgets: number; annotations: number; skipped: number }> {
+export async function restore(home: string, store: CanvasStore, api: ScreenApi, fileName = CANVAS_FILE): Promise<{ widgets: number; annotations: number; skipped: number }> {
   const out = { widgets: 0, annotations: 0, skipped: 0 };
   let snap: Snapshot;
   try {
-    snap = JSON.parse(fs.readFileSync(path.join(home, CANVAS_FILE), 'utf8')) as Snapshot;
+    snap = JSON.parse(fs.readFileSync(path.join(home, fileName), 'utf8')) as Snapshot;
   } catch {
     return out;
   }

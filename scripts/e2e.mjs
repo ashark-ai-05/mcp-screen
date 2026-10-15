@@ -447,6 +447,21 @@ await sleep(250);
 check('the circle fades when its rows scroll out of view', await page.locator(`g.ann[data-ann="${sAnn?.id}"]`).evaluate((el) => el.classList.contains('scrolled-away')));
 await page.keyboard.press('v');
 
+// ---- 8c. named canvases: a second project gets its own canvas and a switcher pill ----
+const homeCanvas = (await call('read_canvas')).canvas;
+await call('open_canvas', { id: 'side-project', title: 'side-project' });
+await call('place_widget', { canvas: 'side-project', kind: 'metric', title: 'Side project builds', data: { value: '12', label: 'green today' } });
+await page.locator('.canvas-pill', { hasText: 'side-project' }).waitFor({ timeout: 5000 });
+await sleep(800);
+const sideState = await call('read_canvas', { canvas: 'side-project' });
+const onSide = await page.locator('#grid .card .card-head').allInnerTexts();
+check('placing on another canvas switches the browser to it and shows a switcher', sideState.canvas === 'side-project' && onSide.some((t) => /Side project/.test(t)) && (await page.locator('.canvas-pill.on').count()) >= 1, JSON.stringify({ canvas: sideState.canvas, onSide, pills: await page.locator('.canvas-pill').allInnerTexts() }));
+await page.screenshot({ path: path.join(SHOTS, '9-canvas-switcher.png') });
+await page.locator('.canvas-pill', { hasText: homeCanvas }).first().click();
+await sleep(800);
+const back = await call('read_canvas');
+check('the switcher pill brings back the project canvas with its widgets', back.canvas === homeCanvas && (await page.locator('#grid .card[data-id="long"]').count()) === 1, `${back.canvas} ${await page.locator('#grid .card').count()}`);
+
 // ---- 9. back to canvas for the end of the video ----
 await page.locator('.tab[data-tab="canvas"]').click();
 await sleep(2500);

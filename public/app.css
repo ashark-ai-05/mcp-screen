@@ -588,3 +588,13 @@ kbd { display: inline-block; min-width: 20px; padding: 1px 6px; margin: 0 2px; b
 .reply-in:focus { border-color: var(--accent); }
 .note .thread .reply { box-shadow: none; }
 .scrolled-away { opacity: .12; transition: opacity .2s; pointer-events: none; }
+
+/* named canvases: pills next to the Canvas tab */
+.canvas-switch { display: flex; gap: 6px; align-items: center; margin-left: 8px; max-width: min(42vw, 420px); overflow-x: auto; scrollbar-width: none; }
+.canvas-switch::-webkit-scrollbar { display: none; }
+.canvas-switch:not([hidden]) { display: flex; }
+.canvas-pill { border: 1px solid var(--line); background: rgba(255,255,255,.04); color: var(--muted); border-radius: 999px; padding: 4px 10px; font: 600 12px/1.2 Inter, sans-serif; cursor: pointer; white-space: nowrap; display: inline-flex; gap: 6px; align-items: center; }
+.canvas-pill:hover { color: var(--text); border-color: var(--line-2); }
+.canvas-pill.on { color: var(--text); background: rgba(142,166,255,.14); border-color: rgba(142,166,255,.4); }
+.canvas-pill .n { font-variant-numeric: tabular-nums; opacity: .7; font-size: 11px; }
+.canvas-pill .new { border-style: dashed; opacity: .75; }

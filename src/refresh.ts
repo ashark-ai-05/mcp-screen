@@ -117,6 +117,7 @@ const defaultRunners: Runners = {
 export class RefreshScheduler {
   private timers = new Map<string, NodeJS.Timeout>();
   private running = new Set<string>();
+  private widgetStore = new Map<string, CanvasStore>();
   private runners: Runners;
   private unsubscribe: () => void;
 
@@ -130,16 +131,24 @@ export class RefreshScheduler {
       if (e.type === 'remove') this.stop(e.id);
     });
   }
+  /** Which store owns a widget (named canvases may place into a non-default store). */
+  private forId(id: string): CanvasStore { return this.widgetStore.get(id) ?? this.store; }
+  /** Watch another store for removals (call when a new named canvas is created). */
+  watch(store: CanvasStore): void {
+    store.bus.on((e) => { if (e.type === 'remove') this.stop(e.id); });
+  }
 
   setMcpCaller(caller: McpCaller): void {
     this.runners.mcp = caller;
   }
 
   /** Called after a widget with a source is placed. Starts it if already allow-listed. */
-  register(w: Widget): void {
+  register(w: Widget, store?: CanvasStore): void {
+    if (store) this.widgetStore.set(w.id, store);
     if (!w.source) return;
+    const s = this.forId(w.id);
     if (this.allow.has(w.source)) this.start(w.id);
-    else if (w.status !== 'needs-approval') this.store.patchMeta(w.id, { status: 'needs-approval' });
+    else if (w.status !== 'needs-approval') s.patchMeta(w.id, { status: 'needs-approval' });
   }
 
   approve(id: string): Widget {
@@ -152,7 +161,7 @@ export class RefreshScheduler {
 
   deny(id: string): Widget {
     this.stop(id);
-    return this.store.patchMeta(id, { status: 'denied' });
+    return this.forId(id).patchMeta(id, { status: 'denied' });
   }
 
   /** Revoke: stop the timer and drop the source from the allow-list. */
@@ -160,31 +169,32 @@ export class RefreshScheduler {
     const w = this.mustGet(id);
     if (w.source) this.allow.remove(w.source);
     this.stop(id);
-    return this.store.patchMeta(id, { status: 'needs-approval' });
+    return this.forId(id).patchMeta(id, { status: 'needs-approval' });
   }
 
   async refreshNow(id: string): Promise<Widget> {
+    const s = this.forId(id);
     const w = this.mustGet(id);
     if (!w.source) return w;
     if (!this.allow.has(w.source)) {
-      return this.store.patchMeta(id, { status: 'needs-approval' });
+      return s.patchMeta(id, { status: 'needs-approval' });
     }
     if (this.running.has(id)) return w;
     this.running.add(id);
     try {
       const raw = await this.fetchSource(w.source);
-      const current = this.store.get(id);
+      const current = s.get(id);
       if (!current) return w;
       const data = coerceRefreshed(current.kind, raw);
-      return this.store.patchMeta(id, {
+      return s.patchMeta(id, {
         data,
         status: 'live',
         error: undefined,
         lastRefreshedAt: new Date().toISOString(),
       });
     } catch (err) {
-      if (!this.store.get(id)) return w;
-      return this.store.patchMeta(id, { status: 'error', error: (err as Error).message });
+      if (!s.get(id)) return w;
+      return s.patchMeta(id, { status: 'error', error: (err as Error).message });
     } finally {
       this.running.delete(id);
     }
@@ -194,6 +204,7 @@ export class RefreshScheduler {
     const t = this.timers.get(id);
     if (t) clearInterval(t);
     this.timers.delete(id);
+    this.widgetStore.delete(id);
   }
 
   stopAll(): void {

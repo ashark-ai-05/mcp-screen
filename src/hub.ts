@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { LocalApi } from './api.js';
-import { restore, startPersistence } from './persist.js';
+import { CanvasBook, defaultCanvasFrom } from './canvases.js';
 import { AllowList, describeSource, RefreshScheduler, type Runners } from './refresh.js';
 import { readImage } from './images.js';
 import { CanvasStore, type AnnotationInput, type AskInput, type FormInput } from './store.js';
@@ -33,14 +33,17 @@ export interface HubOptions {
   port?: number;
   host?: string;
   home?: string | null;
-  /** Save the canvas to <home>/canvas.json and restore it on start (default true when home is set). */
+  /** Save canvases under <home>/canvases/ and restore on start (default true when home is set). */
   persist?: boolean;
+  /** Override the default canvas name (otherwise derived from the git root / MCP_SCREEN_CANVAS). */
+  canvas?: string;
   runners?: Partial<Runners>;
   token?: string;
 }
 
 export interface Hub {
   store: CanvasStore;
+  book: CanvasBook;
   scheduler: RefreshScheduler;
   api: LocalApi;
   url: string;
@@ -68,9 +71,22 @@ const frameNonces = new WeakMap<Widget, string>();
 export async function startHub(opts: HubOptions = {}): Promise<Hub> {
   const home = opts.home === undefined ? screenHome() : opts.home;
   const token = opts.token ?? randomBytes(24).toString('hex');
-  const store = new CanvasStore();
+  const persist = opts.persist !== false && process.env.MCP_SCREEN_NO_PERSIST !== '1';
+  const seed = opts.canvas ? { id: opts.canvas, title: opts.canvas } : defaultCanvasFrom();
+  const book = new CanvasBook({ home, persist: !!(home && persist), seed });
+  // `store` is always the active canvas; the browser and most hub routes use it.
+  const storeOf = (): CanvasStore => book.active;
+  let store = storeOf();
   const allow = new AllowList(home ? path.join(home, 'allowlist.json') : null);
   const scheduler = new RefreshScheduler(store, allow, opts.runners);
+  book.bus.on((e) => {
+    if (e.type === 'canvas-switch') {
+      store = storeOf();
+      scheduler.watch(store);
+    }
+  });
+  // watch every canvas already known so removals stop timers
+  for (const c of book.list()) scheduler.watch(book.store(c.id));
   let appCall: AppCallHandler | undefined;
   const nonceFor = (w: Widget): string => {
     let n = frameNonces.get(w);
@@ -105,8 +121,11 @@ export async function startHub(opts: HubOptions = {}): Promise<Hub> {
     }
     return out;
   };
-  const decorateEvent = (e: ScreenEvent): ScreenEvent =>
-    e.type === 'widget' ? { type: 'widget', widget: decorate(e.widget) } : e;
+  const decorateEvent = (e: ScreenEvent): ScreenEvent => {
+    if (e.type === 'widget') return { type: 'widget', widget: decorate(e.widget) };
+    if (e.type === 'canvas-switch') return { ...e, widgets: e.widgets.map((w) => decorate(w)) };
+    return e;
+  };
 
   async function handle(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     const hostname = (req.headers.host ?? '').replace(/:\d+$/, '');
@@ -179,7 +198,7 @@ export async function startHub(opts: HubOptions = {}): Promise<Hub> {
     if (req.method === 'GET' && p === '/api/events') {
       res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' });
       res.write(`event: snapshot\ndata: ${JSON.stringify(snapshot())}\n\n`);
-      const sub = store.bus.subscribe();
+      const sub = book.bus.subscribe();
       const ping = setInterval(() => res.write(': ping\n\n'), 15000);
       req.on('close', () => {
         clearInterval(ping);
@@ -189,10 +208,25 @@ export async function startHub(opts: HubOptions = {}): Promise<Hub> {
       return;
     }
     if (req.method === 'GET' && p === '/api/state') return send(res, 200, { result: snapshot() });
-    if (req.method === 'GET' && p === '/api/canvas') return send(res, 200, { result: store.readCanvas() });
+    if (req.method === 'GET' && p === '/api/canvas') return send(res, 200, { result: { ...store.readCanvas() as object, canvas: book.activeCanvasId, canvases: book.list() } });
+    if (req.method === 'GET' && p === '/api/canvases') return send(res, 200, { result: book.list() });
     if (req.method === 'GET' && p === '/api/allowlist') return send(res, 200, { result: allow.list() });
 
     const body = req.method === 'GET' || req.method === 'DELETE' ? {} : await readJson(req);
+    // agent (or UI) can name a canvas per request
+    const canvasHdr = req.headers['x-mcp-screen-canvas'];
+    const canvasBody = typeof (body as { canvas?: unknown }).canvas === 'string' ? (body as { canvas: string }).canvas : undefined;
+    const canvasName = (typeof canvasHdr === 'string' && canvasHdr) || canvasBody;
+    if (canvasName) api.useCanvas?.(canvasName);
+    else api.useCanvas?.(undefined);
+    if (req.method === 'POST' && p === '/api/canvases') {
+      const title = typeof (body as { title?: unknown }).title === 'string' ? (body as { title: string }).title : (canvasName || 'canvas');
+      const id = typeof (body as { id?: unknown }).id === 'string' ? (body as { id: string }).id : title;
+      book.ensure(id, title);
+      return send(res, 200, { result: book.setActive(id) });
+    }
+    const open = /^\/api\/canvases\/([\w.-]+)\/open$/.exec(p);
+    if (open && req.method === 'POST') return send(res, 200, { result: book.setActive(open[1] as string) });
     if (req.method === 'POST' && p === '/api/widgets') return send(res, 200, { result: await api.place(body as never) });
     if (req.method === 'POST' && p === '/api/reports') return send(res, 200, { result: store.postReport(body as never) });
     if (req.method === 'POST' && p === '/api/file-events') return send(res, 200, { result: store.fileEvent(body as never) });
@@ -267,8 +301,11 @@ export async function startHub(opts: HubOptions = {}): Promise<Hub> {
   }
 
   function snapshot() {
+    store = storeOf();
     return {
       version: VERSION,
+      canvas: book.activeCanvasId,
+      canvases: book.list(),
       widgets: store.list().map((w) => decorate(w.kind === 'livemap' ? { ...w, unmappedFiles: store.unmappedFor(w.id) } as Widget : w)),
       reports: store.listReports(),
       activity: store.recentActivity(),
@@ -287,16 +324,12 @@ export async function startHub(opts: HubOptions = {}): Promise<Hub> {
   });
   const port = (server.address() as { port: number }).port;
   const url = `http://127.0.0.1:${port}`;
-  const api = new LocalApi(store, scheduler, url);
+  const api = new LocalApi(store, scheduler, url, book, seed.id);
 
-  // the canvas survives restarts (MCP_SCREEN_NO_PERSIST=1 or persist:false turns it off)
-  let persistence: { flush(): void; stop(): void } | null = null;
-  if (home && opts.persist !== false && process.env.MCP_SCREEN_NO_PERSIST !== '1') {
+  if (home && persist) {
     fs.mkdirSync(home, { recursive: true });
-    await restore(home, store, api);
-    persistence = startPersistence(home, store);
-    const p = persistence;
-    process.once('exit', () => p.flush());
+    await book.restoreAll((st) => new LocalApi(st, scheduler, url));
+    process.once('exit', () => book.flush());
   }
 
   if (home) {
@@ -306,7 +339,8 @@ export async function startHub(opts: HubOptions = {}): Promise<Hub> {
   }
 
   return {
-    store,
+    get store() { return book.active; },
+    book,
     scheduler,
     api,
     url,
@@ -316,7 +350,7 @@ export async function startHub(opts: HubOptions = {}): Promise<Hub> {
       appCall = h;
     },
     close: async () => {
-      persistence?.stop();
+      book.stop();
       scheduler.stopAll();
       server.closeAllConnections();
       await new Promise<void>((r) => server.close(() => r()));

@@ -4,7 +4,7 @@
   'use strict';
   const TOKEN = document.querySelector('meta[name="mcp-screen-token"]').content;
   const SVGNS = 'http://www.w3.org/2000/svg';
-  const state = { widgets: new Map(), annotations: new Map(), reports: [], activity: [], tableSort: new Map(), tab: 'canvas' };
+  const state = { widgets: new Map(), annotations: new Map(), canvases: [], canvas: null, reports: [], activity: [], tableSort: new Map(), tab: 'canvas' };
   const frames = new Map(); // widgetId -> { iframe, ready }
 
   // ---------- helpers ----------
@@ -697,6 +697,28 @@
     }
   });
 
+  function renderCanvasSwitch() {
+    const el = document.getElementById('canvas-switch');
+    if (!el) return;
+    const list = state.canvases || [];
+    if (list.length <= 1) { el.hidden = true; el.replaceChildren(); return; }
+    el.hidden = false;
+    el.replaceChildren(...list.map((c) => {
+      const b = h('button', { class: `canvas-pill${c.active || c.id === state.canvas ? ' on' : ''}`, type: 'button', title: c.id },
+        c.title || c.id, c.widgets ? h('span', { class: 'n' }, String(c.widgets)) : null);
+      b.addEventListener('click', () => { if (!(c.active || c.id === state.canvas)) api('POST', `/api/canvases/${encodeURIComponent(c.id)}/open`, {}); });
+      return b;
+    }), (() => {
+      const add = h('button', { class: 'canvas-pill new', type: 'button', title: 'New canvas' }, '+');
+      add.addEventListener('click', async () => {
+        const title = prompt('Name this canvas (usually the project folder):');
+        if (!title || !title.trim()) return;
+        await api('POST', '/api/canvases', { title: title.trim() });
+      });
+      return add;
+    })());
+  }
+
   // ---------- live connection ----------
   const conn = document.getElementById('conn');
   const connText = document.getElementById('conn-text');
@@ -708,8 +730,11 @@
       state.annotations = new Map((snap.annotations || []).map((a) => [a.id, a]));
       state.reports = snap.reports;
       state.activity = snap.activity;
+      state.canvases = snap.canvases || [];
+      state.canvas = snap.canvas || null;
       for (const a of snap.activity) perform({ ...a, replay: true });
       renderAll();
+      renderCanvasSwitch();
     });
     es.onopen = () => { conn.classList.add('on'); connText.textContent = `live · ${location.host}`; };
     es.onerror = () => { conn.classList.remove('on'); connText.textContent = 'reconnecting…'; };
@@ -753,6 +778,16 @@
       } else if (ev.type === 'annotation-remove') {
         state.annotations.delete(ev.id);
         canvas.renderAnnotations();
+      } else if (ev.type === 'canvases') {
+        state.canvases = ev.canvases; renderCanvasSwitch();
+      } else if (ev.type === 'canvas-switch') {
+        state.canvas = ev.canvas;
+        state.widgets = new Map((ev.widgets || []).map((w) => [w.id, w]));
+        state.annotations = new Map((ev.annotations || []).map((a) => [a.id, a]));
+        frames.clear();
+        renderAll(); canvas.renderAnnotations(); renderCanvasSwitch();
+        const title = (state.canvases.find((c) => c.id === ev.canvas) || {}).title || ev.canvas;
+        toast(`Switched to “${title}”`, null, 2200);
       } else if (ev.type === 'cleared') {
         toast(`Cleared ${ev.count} widget${ev.count === 1 ? '' : 's'}`, ev.undoable ? { label: 'Undo', run: () => api('POST', '/api/canvas/undo') } : null);
       } else if (ev.type === 'restored') {

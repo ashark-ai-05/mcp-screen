@@ -98,5 +98,5 @@ await browser.close();
 await client.close();
 const mp4 = path.join(SHOTS, 'hero.mp4'), gif = path.join(SHOTS, 'hero.gif');
 spawnSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', video, '-vf', 'fps=25,format=yuv420p', '-c:v', 'libx264', '-crf', '22', '-movflags', '+faststart', mp4]);
-const r = spawnSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', video, '-vf', 'fps=10,scale=960:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=96:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle', gif]);
+const r = spawnSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', video, '-vf', 'fps=8,scale=900:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=80:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle', gif]);
 console.log(r.status === 0 ? `wrote ${gif} (${(fs.statSync(gif).size / 1e6).toFixed(1)} MB), ${mp4}` : r.stderr.toString());

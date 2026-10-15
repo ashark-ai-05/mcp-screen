@@ -32,7 +32,7 @@ First time? Run `npx mcp-screen serve`, then click **Try a sample canvas** to pl
 
 <img src="screenshots/7-showcase.png" alt="the infinite canvas: chart with a circled spike labelled why?, checklist, flow diagram, diff with a sticky note, code, live log tail, offline map, image and timeline">
 
-<sub>One canvas, 17 widget kinds. The yellow circle ("why?") and the sticky note on the diff were drawn by a person; the agent reads them back with `read_canvas`, including the bar they point at. This screenshot comes from `scripts/e2e.mjs`.</sub>
+<sub>One canvas, 17 widget kinds. The yellow circle ("why?") has the agent's reply threaded under it; the sticky note on the diff is still waiting. Circled data points stay attached when you scroll the card. Screenshot from `scripts/e2e.mjs`.</sub>
 
 <table>
 <tr>
@@ -85,7 +85,7 @@ A widget can carry a command/URL/tool `source` that refreshes with no LLM in the
 </tr>
 </table>
 
-Plus **Share** (export the canvas as a PNG or one self-contained HTML file with no scripts) and **Clear** (with confirm and undo, or `clear_canvas` from the agent).
+Plus **Share** (PNG or self-contained HTML of the **whole** canvas, not just the view), **named canvases** (one per project, named from the git root by default, with a switcher in the header), and **Clear** (with confirm and undo, or `clear_canvas` from the agent). Circle a bar, type a question, and the agent answers in a thread right next to your mark (`reply_annotation`).
 
 ## Install
 
@@ -166,7 +166,9 @@ Gemini CLI disables MCP servers in folders you haven't trusted, so trust the pro
 | `place_widget` | Put a widget on the canvas (kinds below). Optional `x`/`y` (world px), otherwise it goes in the first free slot. Optional `source` + `intervalMs` makes it live (needs your approval). |
 | `update_widget` | Change a widget; shallow-merges `data` by default. `x`/`y` moves it. Logs take `data.append`, checklists take `data.set`. |
 | `read_widget` | Read a widget, including your `selection` (clicked bar/row/node/marker, MCP App messages), your `annotations` on it, and a livemap's `unmappedFiles`. |
-| `read_canvas` | List every widget (with `x`, `y`, `width`, `height`) and every annotation with its target widget and data points. |
+| `read_canvas` | List every widget (with `x`, `y`, `width`, `height`), every annotation with its target and replies, and `pendingQuestions` the agent still owes an answer to. Optional `canvas` picks a named project canvas. |
+| `list_canvases` / `open_canvas` | List named canvases (one per project) and switch the browser to one. Default name = git root folder, or `MCP_SCREEN_CANVAS`. |
+| `reply_annotation` | Answer (or follow up on) a human's note/circle. The reply appears as a thread bubble next to their mark. |
 | `remove_widget` | Remove one widget. |
 | `clear_canvas` | Remove everything (`undo: true` brings it back). |
 | `ask_user` | Show 2–8 choice cards and wait for your click; returns the choice, or `answered: false` with a reason. |
@@ -280,7 +282,7 @@ The UI uses the [Inter](https://rsms.me/inter/) variable font (SIL OFL 1.1, `pub
 
 ## Status
 
-v0.1, early. The canvas (widgets, positions, your notes) is saved to `~/.mcp-screen/canvas.json` and comes back after a restart (`MCP_SCREEN_NO_PERSIST=1` turns that off). Known gaps: diagrams cover Mermaid *flowcharts* only; maps are an offline world outline (no tiles, no zoom inside the map); an export captures the current viewport; PNG export of an embedded MCP App shows a placeholder, because the sandboxed frame can't be captured; a single canvas per machine (no named canvases yet); MCP-tool live sources and app `tools/call` only work in the session that runs `wrap` and owns the canvas; no single-binary build yet.
+v0.1, early. Named canvases live under `~/.mcp-screen/canvases/<id>.json` (legacy `canvas.json` is migrated) and come back after a restart (`MCP_SCREEN_NO_PERSIST=1` turns that off). Known gaps: diagrams cover Mermaid *flowcharts* only; maps are an offline world outline (no tiles, no zoom inside the map); PNG export of an embedded MCP App shows a placeholder, because the sandboxed frame can't be captured; MCP-tool live sources and app `tools/call` only work in the session that runs `wrap` and owns the canvas; no single-binary build yet.
 
 ## Security
 

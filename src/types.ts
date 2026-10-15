@@ -138,4 +138,6 @@ export type ScreenEvent =
   | { type: 'cleared'; count: number; undoable: boolean }
   | { type: 'restored'; count: number }
   | { type: 'annotation'; annotation: Annotation }
-  | { type: 'annotation-remove'; id: string };
+  | { type: 'annotation-remove'; id: string }
+  | { type: 'canvases'; canvases: Array<{ id: string; title: string; updatedAt: string; widgets: number; annotations: number; active: boolean }> }
+  | { type: 'canvas-switch'; canvas: string; widgets: Widget[]; annotations: Annotation[] };

@@ -14,12 +14,13 @@
     <div class="brand"><span class="logo"></span><span class="brand-name">mcp-screen</span></div>
     <nav class="tabs" role="tablist">
       <button class="tab active" data-tab="canvas">Canvas<span class="count" id="count-canvas"></span></button>
+      <div class="canvas-switch" id="canvas-switch" title="Named canvases (one per project)" hidden></div>
       <button class="tab" data-tab="standup">Standup<span class="count" id="count-standup"></span></button>
       <button class="tab" data-tab="livemap">Livemap<span class="count" id="count-livemap"></span></button>
     </nav>
     <div class="actions">
       <div class="menu" id="share-menu">
-        <button class="btn" id="share-btn" title="Export this view">
+        <button class="btn" id="share-btn" title="Export the whole canvas">
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 10V2M5 5l3-3 3 3M3 9v4h10V9"/></svg><span class="lbl">Share</span>
         </button>
         <div class="menu-pop">

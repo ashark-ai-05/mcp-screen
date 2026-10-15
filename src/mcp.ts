@@ -49,6 +49,7 @@ export const SCREEN_TOOLS: Tool[] = [
         y: { type: 'number' },
         source: sourceJson,
         intervalMs: { type: 'number', description: 'Refresh interval for a live source, min 2000, default 30000.' },
+        canvas: { type: 'string', description: 'Named canvas (project). Default: the git root of the agent\'s cwd, or MCP_SCREEN_CANVAS.' },
       },
       required: ['kind', 'title', 'data'],
     },
@@ -86,7 +87,8 @@ export const SCREEN_TOOLS: Tool[] = [
       'List every widget on the canvas with its id, kind, title, live status, selection and position/size in pixels, plus every annotation the human drew ' +
       '(kind arrow|circle|highlight|note, text, replies, and target: the widget and data points it points at). pendingQuestions lists marks with a question you have not answered yet: ' +
       'answer each with reply_annotation. Check this when the human says "look at this" or "see my note".',
-    inputSchema: { type: 'object', properties: {} },
+    inputSchema: { type: 'object', properties: {        canvas: { type: 'string', description: 'Named canvas (project). Default: the git root of the agent\'s cwd, or MCP_SCREEN_CANVAS.' },
+} },
   },
   {
     name: 'remove_widget',
@@ -170,6 +172,23 @@ export const SCREEN_TOOLS: Tool[] = [
     name: 'tidy_canvas',
     description: 'Re-pack every widget on the canvas into a neat grid (same as the Tidy up button). Returns the new positions.',
     inputSchema: { type: 'object', properties: { columns: { type: 'number', description: 'Grid width in 300px columns, 1–8 (default 4).' } } },
+  },
+  {
+    name: 'list_canvases',
+    description: 'List named canvases (one per project). The default name is the git root folder. Switch with open_canvas; place_widget takes an optional canvas argument.',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+  },
+  {
+    name: 'open_canvas',
+    description: 'Switch the browser to a named canvas (creates it if needed). Pass the project name or an id from list_canvases.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: 'Canvas id or project name.' },
+        title: { type: 'string', description: 'Optional display title when creating.' },
+      },
+      required: ['id'],
+    },
   },
   {
     name: 'reply_annotation',
@@ -289,7 +308,20 @@ const fail = (msg: string): CallToolResult => ({ content: [{ type: 'text', text:
 /** Run one screen tool. Returns null if the name isn't a screen tool. */
 export async function callScreenTool(api: ScreenApi, name: string, args: unknown, extra: ToolExtra = {}): Promise<CallToolResult | null> {
   try {
+    const raw = (args && typeof args === 'object') ? args as Record<string, unknown> : {};
+    if (api.useCanvas) {
+      if (typeof raw.canvas === 'string') api.useCanvas(raw.canvas);
+      else if (name === 'open_canvas') api.useCanvas(undefined);
+      else api.useCanvas(api.defaultCanvas);
+    }
     switch (name) {
+      case 'list_canvases':
+        return ok(await api.listCanvases());
+      case 'open_canvas': {
+        const { id, title } = z.object({ id: z.string().min(1), title: z.string().optional() }).parse(args);
+        if (api.useCanvas) api.useCanvas(id);
+        return ok(await api.openCanvas(id, title));
+      }
       case 'place_widget': {
         const input = PlaceZ.parse(args);
         const w = await api.place(input as never);

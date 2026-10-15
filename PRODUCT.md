@@ -50,3 +50,43 @@ A running critique, written as the product owner before each round of work. Shor
 - Skip open asks and MCP App frames.
 - A "scroll for more" fade on overflowing cards.
 - Docs: what is stored on disk, plus honest remaining gaps.
+
+## Round 4 (2026-10-16)
+
+**Who it's for:** unchanged. The unique loop (circle → agent answers about that bar) was silent: the agent could read the mark, but the human never saw the answer on the canvas.
+
+**First 60 seconds:** the hero still sells the hook; what's missing is the answer appearing next to the circle.
+
+**What would make someone star or share it.** Watching the agent reply in a bubble attached to your circle — then typing a follow-up. Closing that loop on the canvas itself.
+
+**Weakest part right now.**
+1. Annotation Q&A lived only in the agent's chat; the canvas never showed the answer.
+2. Share exported the viewport, so a tidy canvas for a friend was cropped.
+3. Circling scrolled table rows / log lines bound the wrong (viewport-top) points.
+
+**This round:** `reply_annotation` + `pendingQuestions`; thread UI; full-canvas Share; scroll-stable marks; hero.gif under 4 MB.
+
+## Round 5 (2026-10-16)
+
+**Who it's for:** people who run agents in more than one repo. One shared canvas mixed projects together.
+
+**First 60 seconds:** fine for one project. Day two, across two repos, is where it falls over.
+
+**What would make someone star or share it.** Opening the tab and seeing *this* project's canvas, with a one-click switch to another.
+
+**Weakest part right now.** A single canvas per machine; agents in different repos wrote on top of each other.
+
+**This round:** named canvases derived from the git root (or `MCP_SCREEN_CANVAS`), persisted under `~/.mcp-screen/canvases/`, `list_canvases` / `open_canvas` / optional `canvas` on tools, header switcher.
+
+## Round 6 (2026-10-16)
+
+**Critique after rounds 4–5.** The product loop is finally visible end-to-end: place → circle → agent replies on the mark → human follows up → switch project. Remaining gaps that would block a public launch:
+
+1. **No mobile annotation story.** Phone viewports get the canvas but drawing a precise circle on a bar is awkward; there's no tap-to-ask on a data point.
+2. **Agent discovery of pending questions.** `pendingQuestions` exists, but nothing pokes the agent when a new note arrives (no hook / notification); humans still have to wait for the next turn.
+3. **Canvas switcher discoverability.** Pills only appear once a second canvas exists; a first-timer never sees them.
+
+**Next highest-impact (for a later night):**
+1. A tiny "N waiting" badge that pulses when pendingQuestions grows, plus an optional Claude Code hook that injects "you have N notes waiting on the canvas".
+2. Tap a chart bar / table row on touch devices to leave a note without drawing.
+3. Per-canvas Share filename and a "copy link to this canvas" that is still localhost-only but names the project.

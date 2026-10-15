@@ -20,58 +20,88 @@ export interface ScreenApi {
   askForm(input: FormInput): Promise<FormResult>;
   tidy(columns?: number): Promise<Array<{ id: string; x: number; y: number }>>;
   replyAnnotation(id: string, text: string): Promise<unknown>;
+  listCanvases(): Promise<unknown>;
+  openCanvas(id: string, title?: string): Promise<unknown>;
+  /** Optional canvas id for the next place/read/clear/tidy (agent project). */
+  useCanvas?(id: string | undefined): void;
+  readonly defaultCanvas?: string;
   readonly url: string;
 }
 
 export class LocalApi implements ScreenApi {
+  private canvasHint: string | undefined;
   constructor(
     private readonly store: CanvasStore,
     private readonly scheduler: RefreshScheduler,
     readonly url: string,
+    private readonly book?: import('./canvases.js').CanvasBook,
+    private readonly agentDefault?: string,
   ) {}
+  useCanvas(id: string | undefined): void { this.canvasHint = id; }
+  /** The canvas this MCP session writes to when a tool omits `canvas`. */
+  get defaultCanvas(): string | undefined { return this.agentDefault; }
+  private target(switchTo = true): CanvasStore {
+    if (!this.book) return this.store;
+    const id = this.canvasHint;
+    if (!id) return this.book.active;
+    this.book.ensure(id);
+    if (switchTo && id !== this.book.activeCanvasId) this.book.setActive(id);
+    return this.book.store(id);
+  }
   async place(input: PlaceInput): Promise<Widget> {
     if (input.source) validateSource(input.source);
-    const w = this.store.place(input);
-    this.scheduler.register(w);
-    return this.store.get(w.id) ?? w;
+    const store = this.target();
+    const w = store.place(input);
+    this.scheduler.register(w, store);
+    return store.get(w.id) ?? w;
   }
   async update(id: string, patch: UpdateInput): Promise<Widget> {
-    return this.store.update(id, patch);
+    return this.target().update(id, patch);
   }
   async read(id: string): Promise<unknown> {
-    return this.store.read(id);
+    return this.target(false).read(id);
   }
   async readCanvas(): Promise<unknown> {
-    return this.store.readCanvas();
+    const store = this.target(false);
+    const canvas = this.book?.activeCanvasId;
+    const base = store.readCanvas() as Record<string, unknown>;
+    return { ...base, canvas, canvases: this.book?.list() ?? [] };
   }
   async remove(id: string): Promise<boolean> {
-    return this.store.remove(id);
+    return this.target().remove(id);
   }
   async postReport(input: ReportInput): Promise<Report> {
-    return this.store.postReport(input);
+    return this.target().postReport(input);
   }
   async fileEvent(ev: FileEvent): Promise<Activity[]> {
-    return this.store.fileEvent(ev);
+    return this.target().fileEvent(ev);
   }
   async clear(): Promise<{ removed: number }> {
-    return this.store.clear();
+    return this.target().clear();
   }
   async undoClear(): Promise<{ restored: number }> {
-    const back = this.store.undoClear();
+    const back = this.target().undoClear();
     for (const w of back) this.scheduler.register(w);
     return { restored: back.length };
   }
   async ask(input: AskInput): Promise<AskResult> {
-    return this.store.ask(input).result;
+    return this.target().ask(input).result;
   }
   async askForm(input: FormInput): Promise<FormResult> {
-    return this.store.askForm(input).result;
+    return this.target().askForm(input).result;
   }
   async replyAnnotation(id: string, text: string) {
-    return this.store.replyAnnotation(id, text, 'agent');
+    return this.target().replyAnnotation(id, text, 'agent');
   }
   async tidy(columns?: number) {
-    return this.store.tidy(columns);
+    return this.target().tidy(columns);
+  }
+  async listCanvases() {
+    return this.book?.list() ?? [{ id: 'default', title: 'default', updatedAt: new Date().toISOString(), widgets: this.store.list().length, annotations: this.store.listAnnotations().length, active: true }];
+  }
+  async openCanvas(id: string, title?: string) {
+    if (!this.book) throw new Error('named canvases are not available');
+    return this.book.setActive(id, title);
   }
 }
 
@@ -80,10 +110,15 @@ export class RemoteApi implements ScreenApi {
     readonly url: string,
     private readonly token: string,
   ) {}
+  private canvasHint: string | undefined;
+  defaultCanvas: string | undefined;
+  useCanvas(id: string | undefined): void { this.canvasHint = id; }
   private async call<T>(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
+    const headers: Record<string, string> = { 'content-type': 'application/json', 'x-mcp-screen-token': this.token };
+    if (this.canvasHint) headers['x-mcp-screen-canvas'] = this.canvasHint;
     const init: RequestInit = {
       method,
-      headers: { 'content-type': 'application/json', 'x-mcp-screen-token': this.token },
+      headers,
       signal: signal ?? AbortSignal.timeout(10_000),
     };
     if (body !== undefined) init.body = JSON.stringify(body);
@@ -125,6 +160,8 @@ export class RemoteApi implements ScreenApi {
   tidy(columns?: number) {
     return this.call<Array<{ id: string; x: number; y: number }>>('POST', '/api/canvas/tidy', columns === undefined ? {} : { columns });
   }
+  listCanvases() { return this.call('GET', '/api/canvases'); }
+  openCanvas(id: string) { return this.call('POST', `/api/canvases/${encodeURIComponent(id)}/open`, {}); }
   async askForm(input: FormInput): Promise<FormResult> {
     const { signal, ...body } = input;
     const timeout = AbortSignal.timeout((body.timeoutMs ?? 180_000) + 10_000);

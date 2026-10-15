@@ -4,6 +4,9 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { startHub, type Hub } from '../src/hub.js';
 import { CANVAS_FILE } from '../src/persist.js';
+import { defaultCanvasFrom } from '../src/canvases.js';
+
+const canvasPath = (home: string, id?: string) => path.join(home, 'canvases', `${id ?? defaultCanvasFrom().id}.json`);
 
 const tmpHome = () => fs.mkdtempSync(path.join(os.tmpdir(), 'mcp-screen-persist-'));
 
@@ -31,8 +34,8 @@ describe('canvas persistence', () => {
     s.move('chart', 40, 60);
     await hub.close();
     hub = null;
-    const saved = JSON.parse(fs.readFileSync(path.join(home, CANVAS_FILE), 'utf8'));
-    expect(fs.statSync(path.join(home, CANVAS_FILE)).mode & 0o777).toBe(0o600);
+    const saved = JSON.parse(fs.readFileSync(canvasPath(home), 'utf8'));
+    expect(fs.statSync(canvasPath(home)).mode & 0o777).toBe(0o600);
     expect(saved.widgets.some((w: { kind: string }) => w.kind === 'question')).toBe(false);
 
     hub = await startHub({ port: 0, home });
@@ -51,7 +54,8 @@ describe('canvas persistence', () => {
 
   it('a tampered or corrupt canvas.json is validated: bad widgets are skipped, the hub still starts', async () => {
     const home = tmpHome();
-    fs.writeFileSync(path.join(home, CANVAS_FILE), JSON.stringify({ version: 1, widgets: [
+    fs.mkdirSync(path.join(home, 'canvases'), { recursive: true });
+    fs.writeFileSync(canvasPath(home), JSON.stringify({ version: 1, widgets: [
       { id: 'ok', kind: 'metric', title: 'ok', data: { value: '1' }, w: 1, h: 1, x: 0, y: 0 },
       { id: 'evil', kind: 'image', title: 'x', data: { path: '/etc/passwd' }, w: 1, h: 1, x: 400, y: 0 },
       { id: 'bad', kind: 'nope', title: 'x', data: {}, w: 1, h: 1, x: 0, y: 400 },
@@ -62,7 +66,7 @@ describe('canvas persistence', () => {
     const ids = hub.store.list().map((w) => w.id).sort();
     expect(ids).toEqual(['cmd', 'ok']);
     expect(hub.store.get('cmd')!.status).toBe('needs-approval'); // a saved command never runs without the allow-list
-    fs.writeFileSync(path.join(home, CANVAS_FILE), '{not json');
+    fs.writeFileSync(canvasPath(home), '{not json');
     await hub.close();
     hub = await startHub({ port: 0, home, persist: true });
     expect(hub.store.list().length).toBeGreaterThanOrEqual(0);
@@ -74,6 +78,6 @@ describe('canvas persistence', () => {
     hub.store.place({ id: 'a', kind: 'metric', title: 'a', data: { value: '1' } });
     await hub.close();
     hub = null;
-    expect(fs.existsSync(path.join(home, CANVAS_FILE))).toBe(false);
+    expect(fs.existsSync(canvasPath(home))).toBe(false);
   });
 });

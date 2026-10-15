@@ -80,7 +80,7 @@ describe('MCP tools (in-memory client)', () => {
   it('lists the screen tools', async () => {
     const c = await connect();
     const names = (await c.listTools()).tools.map((t) => t.name);
-    expect(names).toEqual(['place_widget', 'update_widget', 'read_widget', 'read_canvas', 'remove_widget', 'clear_canvas', 'ask_user', 'ask_form', 'tidy_canvas', 'reply_annotation', 'post_report']);
+    expect(names).toEqual(['place_widget', 'update_widget', 'read_widget', 'read_canvas', 'remove_widget', 'clear_canvas', 'ask_user', 'ask_form', 'tidy_canvas', 'list_canvases', 'open_canvas', 'reply_annotation', 'post_report']);
   });
 
   it('place -> update -> read -> read_canvas round-trip, with selection from the browser', async () => {

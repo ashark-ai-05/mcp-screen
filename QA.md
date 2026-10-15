@@ -137,3 +137,18 @@ Load average 7.7 / 7.8 / 10.0.
 **Bugs fixed:**
 1. The canvas was lost on every hub restart. It is now persisted and restored.
 2. Overflowing cards clipped text with no affordance. They now show a bottom fade until scrolled to the end.
+
+## Round 4–6 (2026-10-16, Australia/Melbourne)
+
+**Shipped**
+- Annotation threads: `reply_annotation`, `pendingQuestions` on `read_canvas`, human follow-ups, persisted replies.
+- Scroll-stable marks: card inner scroll is remembered; wide table rows are circle-able; marks translate with the scroller and fade when off-screen.
+- Full-canvas Share: PNG/HTML of every widget at 1:1 (not the viewport); images inlined; animations frozen; PNG scale clamped to canvas limits.
+- Named canvases: git-root default (or `MCP_SCREEN_CANVAS`), `~/.mcp-screen/canvases/<id>.json`, legacy `canvas.json` migrated, `list_canvases` / `open_canvas` / optional `canvas` on tools, header switcher.
+- hero.gif re-encoded to 3.7 MB (900 px, 8 fps, 80 colours) from the existing hero.mp4.
+
+**Tests:** unit 104, e2e 49, ux 42, soak PASS.
+
+**Perf (best of 3, load avg ~4.6/2.8/2.8):** first paint 56 ms · place median 5 ms · pan@100 1.70 ms/frame · pan@fit 2.58 · zoom 2.84 · CLS 0.0004 · gzip 52.1 KB · misses [].
+
+**Media:** `screenshots/7-showcase.png` (thread bubble), `screenshots/7b-full-canvas-export.png`, `screenshots/9-canvas-switcher.png`, `screenshots/hero.gif` (3.7 MB).
