@@ -104,7 +104,7 @@ npx mcp-screen install-hooks --write   # merges Stop / SubagentStop / PostToolUs
                                        # (--local points them at a local checkout instead of npx)
 ```
 
-When an agent or subagent stops, the hook reads `git diff --numstat` (plus untracked files) in its worktree. The summary and risks come from Claude Code's `last_assistant_message`. Subagent cards are named by `agent_type`, and the internal agents Claude Code runs (with an empty `agent_type`) are skipped. The hook also reads the transcript for the last test command and its result (vitest, jest, pytest, go and cargo output are parsed), the agent's final summary, and any risk or TODO lines. These become a card. Agents can also call `post_report` themselves.
+When an agent or subagent stops, the hook reads `git diff --numstat` (plus untracked files) in its worktree. The summary and risks come from Claude Code's `last_assistant_message`. Subagent cards are named by `agent_type`, and the internal agents Claude Code runs (with an empty `agent_type`) are skipped. The hook also reads the transcript for the last test command and its result (vitest, jest, pytest, go and cargo output are parsed), falling back to the transcript for the summary if needed. These become a card. Agents can also call `post_report` themselves.
 
 ![standup](screenshots/3-standup.png)
 
