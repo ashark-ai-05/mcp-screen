@@ -47,8 +47,10 @@ describe('CanvasStore', () => {
     expect(read.data.items).toEqual({ node: '22' });
     expect(read.selection).toEqual({ row: 1 });
     expect(() => s.place({ id: w.id, kind: 'text', title: 'dup', data: { text: '' } })).toThrow(/already exists/);
+    s.update('kv1', { data: { items: { only: 'this' } }, merge: false });
+    expect(s.read('kv1').data.items).toEqual({ only: 'this' });
     expect(s.remove('kv1')).toBe(true);
-    expect(events.map((e) => e.type)).toEqual(['widget', 'widget', 'widget', 'remove']);
+    expect(events.map((e) => e.type)).toEqual(['widget', 'widget', 'widget', 'widget', 'remove']);
     expect(s.readCanvas().widgets).toHaveLength(0);
   });
 
@@ -99,6 +101,14 @@ describe('MCP tools (in-memory client)', () => {
     expect(read.selection.row.job).toBe('e2e');
     const canvas = json(await c.callTool({ name: 'read_canvas', arguments: {} }));
     expect(canvas.widgets[0]).toMatchObject({ id: 'ci', kind: 'table' });
+  });
+
+  it('update_widget merges partial data by default (agents send only what changed)', async () => {
+    const c = await connect();
+    await c.callTool({ name: 'place_widget', arguments: { id: 'm', kind: 'livemap', title: 'A', data: { nodes: [{ id: 'a', label: 'A', globs: ['a/**'] }, { id: 'b', label: 'B', globs: ['b/**'] }] } } });
+    const r = await c.callTool({ name: 'update_widget', arguments: { id: 'm', data: { edges: [{ from: 'a', to: 'b' }] } } });
+    expect(r.isError).toBeFalsy();
+    expect(json(await c.callTool({ name: 'read_widget', arguments: { id: 'm' } })).data.nodes).toHaveLength(2);
   });
 
   it('returns tool errors instead of throwing', async () => {

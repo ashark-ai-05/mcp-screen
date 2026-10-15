@@ -1,5 +1,7 @@
 # mcp-screen
 
+![mcp-screen: Claude Code on the left, the canvas on the right](screenshots/hero.png)
+
 **Your terminal agent can finally show you things.** Any MCP App, any typed widget, live on a local canvas. One command.
 
 ```bash
@@ -10,11 +12,13 @@ Claude Code, Codex and opencode live in a terminal, and terminals can't show cha
 
 ![mcp-screen demo](screenshots/demo.gif)
 
+<sub>Every widget in the demo comes from a real MCP tool call to a real mcp-screen process, and the right half is the real canvas. The terminal pane is a scripted recreation of the Claude Code UI that shows the real tool results (`scripts/record-demo.mjs`).</sub>
+
 One hub, four modes:
 
 | Mode | What it does |
 | --- | --- |
-| **Canvas** | `place_widget`, `update_widget`, `read_widget` and `read_canvas`: charts, tables, metrics, markdown and status lists. Clicks flow back, so the agent can `read_widget` and see the bar or row you picked. |
+| **Canvas** | `place_widget`, `update_widget`, `read_widget` and `read_canvas`: charts, tables, metrics, markdown and status lists. `update_widget` shallow-merges by default. Clicks flow back, so the agent can `read_widget` and see the bar or row you picked. |
 | **MCP Apps proxy** | `mcp-screen wrap -- <any MCP server>` passes the server's tools through and renders every `ui://` result in a null-origin sandbox, using the MCP Apps postMessage bridge. |
 | **Live widgets** | A widget can carry a `source` (a command, URL or MCP tool) plus an interval. The server refreshes it with no LLM in the loop, and it keeps updating after the agent exits. Every source needs your explicit approval and goes on an allow-list. |
 | **Standup board** | `post_report`, plus Claude Code `Stop`/`SubagentStop` hooks, turn each finished agent run into a card showing files changed, tests, a summary and risks. Cards are grouped by worktree and agent. |
@@ -28,7 +32,7 @@ One hub, four modes:
 claude mcp add screen -- npx mcp-screen
 ```
 
-**Codex** (`~/.codex/config.toml`)
+**Codex** (`codex mcp add screen -- npx mcp-screen`, or `~/.codex/config.toml`)
 
 ```toml
 [mcp_servers.screen]
@@ -39,7 +43,10 @@ args = ["mcp-screen"]
 **opencode** (`opencode.json`)
 
 ```json
-{ "mcp": { "screen": { "type": "local", "command": ["npx", "mcp-screen"] } } }
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": { "screen": { "type": "local", "command": ["npx", "mcp-screen"] } }
+}
 ```
 
 The canvas opens at <http://127.0.0.1:4747>. Several agent sessions share one canvas: the first one starts it and the others attach.
@@ -94,9 +101,10 @@ The widget appears with an **Approve** button that shows the exact command. Noth
 
 ```bash
 npx mcp-screen install-hooks --write   # merges Stop / SubagentStop / PostToolUse hooks into ./.claude/settings.json
+                                       # (--local points them at a local checkout instead of npx)
 ```
 
-When an agent or subagent stops, the hook reads `git diff --numstat` (plus untracked files) in its worktree. It also reads the session transcript: the last test command and its result (vitest, jest, pytest, go and cargo output are parsed), the agent's final summary, and any risk or TODO lines. These become a card. Agents can also call `post_report` themselves.
+When an agent or subagent stops, the hook reads `git diff --numstat` (plus untracked files) in its worktree. The summary and risks come from Claude Code's `last_assistant_message`. Subagent cards are named by `agent_type`, and the internal agents Claude Code runs (with an empty `agent_type`) are skipped. The hook also reads the transcript for the last test command and its result (vitest, jest, pytest, go and cargo output are parsed), the agent's final summary, and any risk or TODO lines. These become a card. Agents can also call `post_report` themselves.
 
 ![standup](screenshots/3-standup.png)
 
@@ -124,6 +132,7 @@ npm install
 npm run build
 npm test                # vitest unit tests, one file per part
 npm run screenshots     # end-to-end: real stdio MCP client, hooks, Playwright screenshots + GIF
+npm run demo            # records screenshots/demo.gif + hero.png
 npm run interop         # renders the official ext-apps basic-server-vanillajs example through wrap
 ```
 

@@ -18,7 +18,7 @@ export interface PlaceInput {
 export interface UpdateInput {
   title?: string;
   data?: unknown;
-  /** Shallow-merge into existing data instead of replacing it. */
+  /** Shallow-merge into existing data (default). Pass false to replace the data wholesale. */
   merge?: boolean;
   w?: number;
   h?: number;
@@ -74,7 +74,7 @@ export class CanvasStore {
   update(id: string, patch: UpdateInput): Widget {
     const w = this.require(id);
     if (patch.data !== undefined) {
-      const next = patch.merge ? { ...w.data, ...(patch.data as object) } : patch.data;
+      const next = patch.merge === false ? patch.data : { ...w.data, ...(patch.data as object) };
       w.data = withLayout(w.kind, validateData(w.kind, next));
     }
     if (patch.title !== undefined) w.title = patch.title;

@@ -15,7 +15,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SHOTS = path.join(ROOT, 'screenshots');
 const PORT = Number(process.env.E2E_PORT ?? 4791);
 const HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'mcp-screen-e2e-'));
-const GIF = !process.argv.includes('--no-gif');
+const GIF = process.argv.includes('--gif'); // the README GIF comes from scripts/record-demo.mjs
 fs.mkdirSync(SHOTS, { recursive: true });
 const env = { ...process.env, MCP_SCREEN_HOME: HOME, MCP_SCREEN_NO_OPEN: '1' };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -230,9 +230,9 @@ await browser.close();
 await client.close();
 
 if (video && fs.existsSync(video)) {
-  const gif = path.join(SHOTS, 'demo.gif');
+  const gif = path.join(SHOTS, 'e2e-run.gif');
   const r = spawnSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', video, '-vf', 'fps=6,scale=880:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=128[p];[b][p]paletteuse=dither=bayer:bayer_scale=4', gif]);
-  fs.copyFileSync(video, path.join(SHOTS, 'demo.webm'));
+  fs.copyFileSync(video, path.join(HOME, 'e2e-run.webm'));
   check('demo GIF rendered', r.status === 0 && fs.existsSync(gif), gif);
 }
 

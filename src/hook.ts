@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import { RemoteApi } from './api.js';
 import { readHubInfo } from './hub.js';
-import { gitInfo, parseTranscript } from './standup.js';
+import { extractRisks, gitInfo, parseTranscript } from './standup.js';
 import type { FileEvent, Report } from './types.js';
 import type { ReportInput } from './store.js';
 
@@ -14,6 +14,9 @@ export interface HookPayload {
   cwd?: string;
   agent_type?: string;
   agent_id?: string;
+  /** Final assistant text on Stop/SubagentStop (preferred: the transcript may lag). */
+  last_assistant_message?: string;
+  stop_hook_active?: boolean;
   tool_name?: string;
   tool_input?: { file_path?: string; notebook_path?: string; path?: string };
 }
@@ -22,7 +25,7 @@ const FILE_TOOLS = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit']);
 
 export function agentName(p: HookPayload): string {
   const short = (p.session_id ?? '').slice(0, 6);
-  if (p.agent_type) return p.agent_type;
+  if (p.agent_type) return p.agent_id ? `${p.agent_type}-${p.agent_id.replace(/^agent-/, '').slice(0, 6)}` : p.agent_type;
   if (p.hook_event_name === 'SubagentStop') return `subagent${short ? `-${short}` : ''}`;
   return `claude${short ? `-${short}` : ''}`;
 }
@@ -39,6 +42,9 @@ export function buildFromHook(p: HookPayload): { report?: ReportInput; fileEvent
     return { fileEvent: fe };
   }
   if (event === 'Stop' || event === 'SubagentStop') {
+    // Claude Code also fires SubagentStop for its own internal agents (prompt suggestions, /btw);
+    // those carry an empty agent_type and did no work worth a card.
+    if (event === 'SubagentStop' && p.agent_type === '') return {};
     const transcriptPath = (event === 'SubagentStop' && p.agent_transcript_path) || p.transcript_path;
     let parsed: ReturnType<typeof parseTranscript> = { summary: '', tests: { status: 'unknown' }, risks: [] };
     if (transcriptPath) {
@@ -52,10 +58,10 @@ export function buildFromHook(p: HookPayload): { report?: ReportInput; fileEvent
     const report: ReportInput = {
       agent: agentName(p),
       worktree: g.worktree,
-      summary: parsed.summary || '(no summary in transcript)',
+      summary: (p.last_assistant_message?.trim() || parsed.summary || '(no summary)').slice(0, 2000),
       filesChanged: g.files,
       tests: parsed.tests,
-      risks: parsed.risks,
+      risks: p.last_assistant_message ? extractRisks(p.last_assistant_message) : parsed.risks,
       source: event === 'Stop' ? 'stop-hook' : 'subagent-stop-hook',
     };
     if (g.branch) report.branch = g.branch;
@@ -86,6 +92,16 @@ export async function runHook(stdin: string): Promise<{ posted: 'report' | 'file
   return { posted: 'nothing' };
 }
 
+export function hooksSnippet(command = 'npx -y mcp-screen hook') {
+  return {
+    hooks: {
+      Stop: [{ hooks: [{ type: 'command', command, timeout: 15 }] }],
+      SubagentStop: [{ hooks: [{ type: 'command', command, timeout: 15 }] }],
+      PostToolUse: [{ matcher: 'Write|Edit|MultiEdit|NotebookEdit', hooks: [{ type: 'command', command, timeout: 5 }] }],
+    },
+  };
+}
+
 export const HOOKS_SNIPPET = {
   hooks: {
     Stop: [{ hooks: [{ type: 'command', command: 'npx -y mcp-screen hook', timeout: 15 }] }],
@@ -97,10 +113,10 @@ export const HOOKS_SNIPPET = {
 };
 
 /** Merge our hooks into an existing settings object without duplicating them. */
-export function mergeHooks(settings: Record<string, unknown>): Record<string, unknown> {
+export function mergeHooks(settings: Record<string, unknown>, snippet = HOOKS_SNIPPET): Record<string, unknown> {
   const out = { ...settings };
   const hooks = { ...((out.hooks as Record<string, unknown[]>) ?? {}) };
-  for (const [event, entries] of Object.entries(HOOKS_SNIPPET.hooks)) {
+  for (const [event, entries] of Object.entries(snippet.hooks)) {
     const existing = (hooks[event] ?? []) as Array<{ hooks?: Array<{ command?: string }> }>;
     const has = existing.some((e) => e.hooks?.some((h) => h.command?.includes('mcp-screen hook')));
     hooks[event] = has ? existing : [...existing, ...entries];

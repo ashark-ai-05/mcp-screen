@@ -4,7 +4,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { RemoteApi, type ScreenApi } from './api.js';
-import { HOOKS_SNIPPET, mergeHooks, runHook } from './hook.js';
+import { hooksSnippet, mergeHooks, runHook } from './hook.js';
+import { fileURLToPath } from 'node:url';
 import { readHubInfo, startHub, VERSION, type Hub } from './hub.js';
 import { createScreenServer } from './mcp.js';
 import { runWrap } from './wrap.js';
@@ -16,7 +17,7 @@ Usage:
   mcp-screen wrap -- <cmd...>    proxy another MCP server and render its MCP Apps (ui://) on the canvas
   mcp-screen serve               canvas only, no MCP (keep it open in a tab)
   mcp-screen hook                Claude Code hook entry (Stop / SubagentStop / PostToolUse), reads stdin
-  mcp-screen install-hooks [--write]  print (or merge into ./.claude/settings.json) the hook config
+  mcp-screen install-hooks [--write] [--local]  print (or merge into ./.claude/settings.json) the hook config
 
 Options:
   --port <n>    canvas port (default 4747, env MCP_SCREEN_PORT)
@@ -85,11 +86,13 @@ async function main(argv: string[]): Promise<void> {
       return;
     }
     case 'install-hooks': {
-      if (!own.includes('--write')) return void console.log(JSON.stringify(HOOKS_SNIPPET, null, 2));
+      // --local: point hooks at this checkout (for development) instead of the npm package
+      const snippet = hooksSnippet(own.includes('--local') ? `node ${JSON.stringify(fileURLToPath(import.meta.url))} hook` : undefined);
+      if (!own.includes('--write')) return void console.log(JSON.stringify(snippet, null, 2));
       const file = path.join(process.cwd(), '.claude', 'settings.json');
       const cur = fs.existsSync(file) ? (JSON.parse(fs.readFileSync(file, 'utf8')) as Record<string, unknown>) : {};
       fs.mkdirSync(path.dirname(file), { recursive: true });
-      fs.writeFileSync(file, JSON.stringify(mergeHooks(cur), null, 2) + '\n');
+      fs.writeFileSync(file, JSON.stringify(mergeHooks(cur, snippet), null, 2) + '\n');
       return void console.log(`mcp-screen hooks merged into ${file}`);
     }
     case 'serve': {

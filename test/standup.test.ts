@@ -79,6 +79,17 @@ describe('standup: hooks', () => {
     expect(store.listReports()[0]).toEqual(posted);
   });
 
+  it('uses last_assistant_message and skips internal SubagentStop events (real Claude Code fields)', () => {
+    const dir = repo();
+    const { report } = buildFromHook({
+      hook_event_name: 'SubagentStop', session_id: 'abc123', cwd: dir, stop_hook_active: false,
+      agent_id: 'agent-def456', agent_type: 'Explore', agent_transcript_path: '/nope.jsonl',
+      last_assistant_message: 'Found 3 issues.\n- Risk: auth module untested',
+    });
+    expect(report).toMatchObject({ agent: 'Explore-def456', summary: 'Found 3 issues.\n- Risk: auth module untested', risks: ['Risk: auth module untested'], source: 'subagent-stop-hook' });
+    expect(buildFromHook({ hook_event_name: 'SubagentStop', agent_type: '', cwd: dir })).toEqual({});
+  });
+
   it('names subagents and maps PostToolUse edits to file events', () => {
     expect(agentName({ hook_event_name: 'SubagentStop', session_id: 'ffeedd00' })).toBe('subagent-ffeedd');
     expect(agentName({ hook_event_name: 'SubagentStop', agent_type: 'test-writer' })).toBe('test-writer');

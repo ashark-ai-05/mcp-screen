@@ -50,7 +50,7 @@ export const SCREEN_TOOLS: Tool[] = [
   },
   {
     name: 'update_widget',
-    description: 'Replace (or with merge:true, shallow-merge) the data / title / size of an existing widget.',
+    description: 'Update an existing widget. `data` is shallow-merged into the current data by default (send only the keys you change, e.g. {edges} on a livemap); pass merge:false to replace it entirely.',
     inputSchema: {
       type: 'object',
       properties: {
