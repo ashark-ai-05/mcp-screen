@@ -10,8 +10,8 @@ import type { ScreenApi } from './api.js';
 import { KIND_DOCS, WIDGET_KINDS } from './registry.js';
 import { VERSION } from './hub.js';
 
-/** Kinds an agent may place directly. mcp-app comes from `wrap`; question comes from ask_user. */
-const PLACEABLE = WIDGET_KINDS.filter((k) => k !== 'mcp-app' && k !== 'question');
+/** Kinds an agent may place directly. mcp-app comes from `wrap`; question/form come from ask_user/ask_form. */
+const PLACEABLE = WIDGET_KINDS.filter((k) => k !== 'mcp-app' && k !== 'question' && k !== 'form');
 
 const sourceJson = {
   type: 'object',
@@ -43,8 +43,10 @@ export const SCREEN_TOOLS: Tool[] = [
         title: { type: 'string' },
         data: { type: 'object', description: 'Payload matching the kind (see description).' },
         id: { type: 'string', description: 'Optional stable id, e.g. "ci-failures".' },
-        w: { type: 'number', description: 'Width in grid columns, 1-4.' },
-        h: { type: 'number', description: 'Height in grid rows, 1-4.' },
+        w: { type: 'number', description: 'Width in grid columns (300px each), 1-4.' },
+        h: { type: 'number', description: 'Height in grid rows (150px each), 1-4.' },
+        x: { type: 'number', description: 'Optional canvas position in pixels (top-left). Omit to use the first free spot.' },
+        y: { type: 'number' },
         source: sourceJson,
         intervalMs: { type: 'number', description: 'Refresh interval for a live source, min 2000, default 30000.' },
       },
@@ -53,7 +55,9 @@ export const SCREEN_TOOLS: Tool[] = [
   },
   {
     name: 'update_widget',
-    description: 'Update an existing widget. `data` is shallow-merged into the current data by default (send only the keys you change, e.g. {edges} on a livemap); pass merge:false to replace it entirely.',
+    description:
+      'Update an existing widget. `data` is shallow-merged into the current data by default (send only the keys you change, e.g. {edges} on a livemap); pass merge:false to replace it entirely. ' +
+      'Shortcuts: log widgets take data.append (lines to add); checklist widgets take data.set ({"<item id or label>": "done"}). x/y move it on the canvas; changing w/h pushes covered widgets down.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -63,6 +67,8 @@ export const SCREEN_TOOLS: Tool[] = [
         title: { type: 'string' },
         w: { type: 'number' },
         h: { type: 'number' },
+        x: { type: 'number' },
+        y: { type: 'number' },
       },
       required: ['id'],
     },
@@ -70,12 +76,15 @@ export const SCREEN_TOOLS: Tool[] = [
   {
     name: 'read_widget',
     description:
-      'Read a widget back, including `selection`: what the human clicked (table row, chart bar) or what an MCP App reported. For livemaps, `unmappedFiles` lists edited files no node covers (time to update the map).',
+      'Read a widget back, including `selection`: what the human clicked (table row, chart bar) or what an MCP App reported, and `annotations`: arrows, circles, highlights and sticky notes the human drew on it, ' +
+      'with `text` (their note) and `target.dataPoints` (e.g. the chart bar they circled). For livemaps, `unmappedFiles` lists edited files no node covers (time to update the map).',
     inputSchema: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
   },
   {
     name: 'read_canvas',
-    description: 'List every widget on the canvas with its id, kind, title, live status and current selection.',
+    description:
+      'List every widget on the canvas with its id, kind, title, live status, selection and position/size in pixels, plus every annotation the human drew ' +
+      '(kind arrow|circle|highlight|note, text, and target: the widget and data points it points at). Check annotations when the human says "look at this" or "see my note".',
     inputSchema: { type: 'object', properties: {} },
   },
   {
@@ -117,6 +126,49 @@ export const SCREEN_TOOLS: Tool[] = [
       },
       required: ['question', 'choices'],
     },
+  },
+  {
+    name: 'ask_form',
+    description:
+      'Ask the human to fill in a small form on the canvas and BLOCK until they press Submit (or the timeout passes). Field types: text, textarea, number, slider (needs min/max), select (needs options), checkbox. ' +
+      'Returns {submitted:true, values:{fieldId: value}} or {submitted:false, reason}. Values are checked against the fields (required, min/max, options) before you get them.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        prompt: { type: 'string', description: 'What you need, e.g. "Configure the load test".' },
+        detail: { type: 'string' },
+        fields: {
+          type: 'array',
+          minItems: 1,
+          maxItems: 20,
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string' },
+              label: { type: 'string' },
+              type: { type: 'string', enum: ['text', 'textarea', 'number', 'slider', 'select', 'checkbox'] },
+              help: { type: 'string' },
+              placeholder: { type: 'string' },
+              required: { type: 'boolean' },
+              min: { type: 'number' },
+              max: { type: 'number' },
+              step: { type: 'number' },
+              options: { type: 'array', items: { type: 'string' } },
+              default: { type: ['string', 'number', 'boolean'] },
+            },
+            required: ['id', 'label', 'type'],
+          },
+        },
+        submitLabel: { type: 'string' },
+        timeoutSeconds: { type: 'number', description: 'How long to wait, default 180, max 900.' },
+      },
+      required: ['prompt', 'fields'],
+    },
+  },
+  {
+    name: 'tidy_canvas',
+    description: 'Re-pack every widget on the canvas into a neat grid (same as the Tidy up button). Returns the new positions.',
+    inputSchema: { type: 'object', properties: {} },
   },
   {
     name: 'post_report',
@@ -167,6 +219,8 @@ const PlaceZ = z.object({
   id: z.string().regex(/^[\w.-]+$/).optional(),
   w: span,
   h: span,
+  x: z.number().optional(),
+  y: z.number().optional(),
   source: SourceZ.optional(),
   intervalMs: z.number().optional(),
 });
@@ -177,6 +231,8 @@ const UpdateZ = z.object({
   title: z.string().optional(),
   w: span,
   h: span,
+  x: z.number().optional(),
+  y: z.number().optional(),
 });
 const IdZ = z.object({ id: z.string() });
 const ReportZ = z.object({
@@ -198,6 +254,14 @@ const AskZ = z.object({
     .array(z.object({ id: z.string().min(1), label: z.string().min(1), description: z.string().optional(), preview: z.string().optional() }))
     .min(2)
     .max(8),
+  timeoutSeconds: z.number().positive().optional(),
+});
+
+const FormZ = z.object({
+  prompt: z.string().min(1),
+  detail: z.string().optional(),
+  fields: z.array(z.record(z.string(), z.unknown())).min(1).max(20),
+  submitLabel: z.string().optional(),
   timeoutSeconds: z.number().positive().optional(),
 });
 
@@ -256,6 +320,24 @@ export async function callScreenTool(api: ScreenApi, name: string, args: unknown
           if (tick) clearInterval(tick);
         }
       }
+      case 'ask_form': {
+        const a = FormZ.parse(args);
+        const started = Date.now();
+        const tick = extra.onWaiting ? setInterval(() => extra.onWaiting?.(Date.now() - started), 10_000) : undefined;
+        try {
+          const input: Parameters<ScreenApi['askForm']>[0] = { prompt: a.prompt, fields: a.fields as never };
+          if (a.detail) input.detail = a.detail;
+          if (a.submitLabel) input.submitLabel = a.submitLabel;
+          if (a.timeoutSeconds) input.timeoutMs = a.timeoutSeconds * 1000;
+          if (extra.signal) input.signal = extra.signal;
+          const r = await api.askForm(input);
+          return ok(r.submitted ? { submitted: true, values: r.values } : { submitted: false, reason: r.reason });
+        } finally {
+          if (tick) clearInterval(tick);
+        }
+      }
+      case 'tidy_canvas':
+        return ok({ positions: await api.tidy() });
       case 'post_report': {
         const r = await api.postReport(ReportZ.parse(args) as never);
         return ok({ id: r.id, posted: true });

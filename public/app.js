@@ -4,7 +4,7 @@
   'use strict';
   const TOKEN = document.querySelector('meta[name="mcp-screen-token"]').content;
   const SVGNS = 'http://www.w3.org/2000/svg';
-  const state = { widgets: new Map(), reports: [], activity: [], tableSort: new Map(), tab: 'canvas' };
+  const state = { widgets: new Map(), annotations: new Map(), reports: [], activity: [], tableSort: new Map(), tab: 'canvas' };
   const frames = new Map(); // widgetId -> { iframe, ready }
 
   // ---------- helpers ----------
@@ -14,7 +14,7 @@
       if (v == null || v === false) continue;
       if (k === 'class') el.className = v;
       else if (k.startsWith('on')) el.addEventListener(k.slice(2), v);
-      else if (k === 'style' && typeof v === 'object') Object.assign(el.style, v);
+      else if (k === 'style' && typeof v === 'object') for (const [sk, sv] of Object.entries(v)) { if (sk.startsWith('--')) el.style.setProperty(sk, sv); else el.style[sk] = sv; }
       else el.setAttribute(k, v === true ? '' : String(v));
     }
     for (const kid of kids.flat()) if (kid != null && kid !== false) el.append(kid instanceof Node ? kid : String(kid));
@@ -114,6 +114,7 @@
       h('tbody', {}, body.map(({ r, i }) => {
         return h('tr', {
           class: i === selIdx ? 'sel' : '',
+          'data-pt': JSON.stringify({ rowIndex: i, row: Object.fromEntries(columns.map((c, ci) => [c, r[ci]])) }),
           onclick: () => select(w, { rowIndex: i, row: Object.fromEntries(columns.map((c, ci) => [c, r[ci]])) }),
         }, r.map((cell) => h('td', {}, cell == null ? '' : String(cell))));
       }))));
@@ -140,12 +141,13 @@
       const pts = values.map((v, i) => [pad.l + step * (i + 0.5), pad.t + ih - (v / max) * ih]);
       svg.append(s('path', { class: 'area', d: `M${pts[0][0]},${pad.t + ih} L${pts.map((p) => p.join(',')).join(' L')} L${pts[pts.length - 1][0]},${pad.t + ih} Z` }));
       svg.append(s('path', { class: 'line', d: `M${pts.map((p) => p.join(',')).join(' L')}` }));
-      pts.forEach((p, i) => svg.append(s('circle', { cx: p[0], cy: p[1], r: 3, fill: '#7c9cff', style: 'cursor:pointer', onclick: () => select(w, { label: labels[i], value: values[i], filter: { value: labels[i] } }) })));
+      pts.forEach((p, i) => svg.append(s('circle', { cx: p[0], cy: p[1], r: 3, fill: '#7c9cff', style: 'cursor:pointer', 'data-pt': JSON.stringify({ label: labels[i], value: values[i] }), onclick: () => select(w, { label: labels[i], value: values[i], filter: { value: labels[i] } }) })));
     } else {
       values.forEach((v, i) => {
         const bh = (v / max) * ih, x = pad.l + step * i + step * 0.15, y = pad.t + ih - bh;
         svg.append(s('rect', {
           class: `bar${selLabel && selLabel !== labels[i] ? ' dim' : ''}`, x, y, width: step * 0.7, height: Math.max(1, bh), rx: 3,
+          'data-pt': JSON.stringify({ label: labels[i], value: v }),
           onclick: () => select(w, selLabel === labels[i] ? null : { label: labels[i], value: v, filter: { value: labels[i] } }),
         }, s('title', {}, `${labels[i]}: ${v}${unit || ''}`)));
         if (labels.length <= 16) svg.append(s('text', { class: 'val', x: x + step * 0.35, y: y - 4, 'text-anchor': 'middle' }, v));
@@ -157,7 +159,7 @@
 
   function renderMetric(w) {
     const { value, label, delta } = w.data;
-    return h('div', { class: 'metric' },
+    return h('div', { class: 'metric', 'data-pt': JSON.stringify({ value, label }) },
       h('div', { class: 'v' }, String(value)),
       h('div', { class: 'l' }, label || '', delta != null ? h('span', { class: `d ${delta >= 0 ? 'up' : 'down'}` }, `  ${delta >= 0 ? '▲' : '▼'} ${Math.abs(delta)}`) : null));
   }
@@ -214,11 +216,14 @@
     table: renderTable,
     chart: renderChart,
     metric: renderMetric,
-    kv: (w) => h('dl', { class: 'kv' }, Object.entries(w.data.items).flatMap(([k, v]) => [h('dt', {}, k), h('dd', {}, String(v))])),
-    'status-list': (w) => h('ul', { class: 'sl' }, w.data.items.map((it) => h('li', {}, h('span', { class: `s ${it.status}` }), h('span', {}, it.label), it.detail ? h('span', { class: 'det' }, it.detail) : null))),
+    kv: (w) => h('dl', { class: 'kv' }, Object.entries(w.data.items).flatMap(([k, v]) => [h('dt', { 'data-pt': JSON.stringify({ key: k, value: v }) }, k), h('dd', { 'data-pt': JSON.stringify({ key: k, value: v }) }, String(v))])),
+    'status-list': (w) => h('ul', { class: 'sl' }, w.data.items.map((it) => h('li', { 'data-pt': JSON.stringify({ label: it.label, status: it.status }) }, h('span', { class: `s ${it.status}` }), h('span', {}, it.label), it.detail ? h('span', { class: 'det' }, it.detail) : null))),
     'mcp-app': renderApp,
     livemap: (w) => h('div', { class: 'md' }, h('p', {}, `Architecture map with ${w.data.nodes.length} nodes. `), h('button', { class: 'btn', onclick: () => setTab('livemap') }, 'Open Livemap →')),
   };
+
+  Object.assign(RENDER, window.McpScreenKinds({ h, s, api, select, markdown, rerender: (id) => rerender(id) }));
+  const KIND_LABEL = { 'mcp-app': 'MCP App', question: 'ask_user', form: 'ask_form' };
 
   const STATUS_LABEL = { live: 'live', 'needs-approval': 'needs approval', error: 'error', denied: 'denied' };
 
@@ -239,14 +244,15 @@
       body.append(h('div', { class: 'err' }, `render failed: ${e.message}`));
     }
     const el = h('article', {
-      class: `card${w.kind === 'mcp-app' ? ' app' : ''}${w.kind === 'question' ? ` question ${w.data.state}` : ''}`, 'data-id': w.id,
-      style: { gridColumn: `span ${w.w}`, gridRow: `span ${w.status === 'needs-approval' ? Math.max(w.h, 2) : w.h}` },
+      class: `card k-${w.kind}${w.kind === 'mcp-app' ? ' app' : ''}${w.kind === 'question' || w.kind === 'form' ? ` question ${w.data.state}` : ''}`, 'data-id': w.id, 'data-kind': w.kind,
     },
-      h('div', { class: 'card-head' },
+      h('div', { class: 'card-head', title: 'Drag to move' },
+        h('span', { class: 'grip', 'aria-hidden': 'true' }),
         h('span', { class: 'card-title', title: w.title }, w.title),
-        h('span', { class: 'kind' }, w.kind === 'mcp-app' ? 'MCP App' : w.kind === 'question' ? 'ask_user' : w.kind),
+        h('span', { class: 'kind' }, KIND_LABEL[w.kind] || w.kind),
         STATUS_LABEL[w.status] ? h('span', { class: `pill ${w.status}` }, STATUS_LABEL[w.status]) : null),
       body);
+    canvas.position(el, w);
     if (w.source && w.status !== 'needs-approval') {
       el.append(h('div', { class: 'card-foot' },
         h('span', { class: 'src mono', title: w.sourceLabel }, w.sourceLabel),
@@ -262,13 +268,16 @@
 
   // ---------- views ----------
   const grid = document.getElementById('grid');
+  const stage = document.getElementById('stage');
+  const toastRef = { fn: null };
+  const canvas = window.McpScreenCanvas({ h, s, api, state, stage, world: document.getElementById('world'), grid, toast: (...a) => toastRef.fn(...a) });
+  let emptyEl = null;
   function renderCanvas() {
-    const widgets = [...state.widgets.values()].filter((w) => w.kind !== 'livemap' || true);
+    const widgets = [...state.widgets.values()];
     document.getElementById('count-canvas').textContent = widgets.length ? String(widgets.length) : '';
     // Keyed reconcile. Cards are never re-parented (moving an iframe in the DOM reloads it and
-    // loses the MCP App's state); visual order comes from CSS `order` instead.
+    // loses the MCP App's state); they are absolutely positioned on the infinite canvas.
     const existing = new Map([...grid.querySelectorAll('.card')].map((c) => [c.dataset.id, c]));
-    grid.querySelector('.empty')?.remove();
     for (const [id, c] of existing) if (!state.widgets.has(id)) {
       frames.delete(id);
       if (c.classList.contains('leaving')) continue;
@@ -276,35 +285,44 @@
       setTimeout(() => c.remove(), 280);
     }
     let fresh = 0;
-    document.getElementById('clear-btn').disabled = !widgets.length;
+    document.getElementById('clear-btn').disabled = !widgets.length && !state.annotations.size;
+    emptyEl?.remove();
+    emptyEl = null;
     if (!widgets.length) {
-      grid.append(h('div', { class: 'empty' },
+      emptyEl = h('div', { class: 'empty' },
         h('h2', {}, 'Your agent’s screen is ready'),
         h('p', {}, 'Ask your agent to show you something, e.g. ', h('code', {}, '“chart our last 30 days of CI failures on the screen”')),
-        h('p', {}, 'Tools: place_widget · ask_user · update_widget · read_widget · read_canvas · clear_canvas · post_report')));
-      return;
+        h('p', {}, 'Drag cards by their title · scroll or drag the background to pan · Ctrl/⌘ + scroll to zoom · draw with the tools on the left'));
+      stage.append(emptyEl);
     }
-    widgets.forEach((w, i) => {
+    for (const w of widgets) {
       let c = existing.get(w.id);
       if (!c || (c.dataset.v !== w.updatedAt && w.kind !== 'mcp-app')) {
         const next = card(w);
         next.dataset.v = w.updatedAt;
-        if (c) { next.style.animation = 'none'; c.replaceWith(next); } else { next.style.setProperty('--delay', `${Math.min(fresh++, 6) * 70}ms`); grid.append(next); }
+        if (c) { next.style.animation = 'none'; next.style.zIndex = c.style.zIndex; c.replaceWith(next); } else { next.style.setProperty('--delay', `${Math.min(fresh++, 6) * 70}ms`); grid.append(next); }
         c = next;
-      }
-      c.style.order = String(i);
-    });
+      } else canvas.position(c, w);
+    }
+    canvas.renderAnnotations();
   }
   function rerender(id) {
     const w = state.widgets.get(id);
     const old = grid.querySelector(`.card[data-id="${CSS.escape(id)}"]`);
     if (!w || !old) return renderAll();
-    if (w.kind === 'mcp-app') return; // never rebuild a live app frame
+    if (w.kind === 'mcp-app') return canvas.position(old, w); // never rebuild a live app frame
     const c = card(w);
     c.dataset.v = w.updatedAt;
     c.style.animation = 'none';
-    c.style.order = old.style.order;
+    c.style.zIndex = old.style.zIndex;
     old.replaceWith(c);
+  }
+  /** Glide to a new widget the agent placed outside the current view. */
+  function reveal(w) {
+    const r = stage.getBoundingClientRect();
+    const v = canvas.view;
+    const x0 = -v.x / v.z, y0 = -v.y / v.z, x1 = x0 + r.width / v.z, y1 = y0 + r.height / v.z;
+    if (w.x > x1 - 40 || w.y > y1 - 40 || w.x < x0 - 200 || w.y < y0 - 100) canvas.fit();
   }
 
   const board = document.getElementById('board');
@@ -631,6 +649,7 @@
     es.addEventListener('snapshot', (e) => {
       const snap = JSON.parse(e.data);
       state.widgets = new Map(snap.widgets.map((w) => [w.id, w]));
+      state.annotations = new Map((snap.annotations || []).map((a) => [a.id, a]));
       state.reports = snap.reports;
       state.activity = snap.activity;
       for (const a of snap.activity) perform({ ...a, replay: true });
@@ -644,8 +663,12 @@
         const prev = state.widgets.get(ev.widget.id);
         state.widgets.set(ev.widget.id, ev.widget);
         if (prev) {
-          if (prev.kind === 'mcp-app' && frames.get(ev.widget.id)) frames.get(ev.widget.id).widget = ev.widget;
-          else rerender(ev.widget.id);
+          if (prev.kind === 'mcp-app' && frames.get(ev.widget.id)) { frames.get(ev.widget.id).widget = ev.widget; rerender(ev.widget.id); }
+          else if (JSON.stringify({ ...prev, x: 0, y: 0 }) === JSON.stringify({ ...ev.widget, x: 0, y: 0 })) {
+            const c = grid.querySelector(`.card[data-id="${CSS.escape(ev.widget.id)}"]`);
+            if (c) canvas.position(c, ev.widget); // moved only: no rebuild
+          } else rerender(ev.widget.id);
+          canvas.drawMinimap();
           if (ev.widget.kind === 'chart' && ev.widget.data.linkTo) rerender(ev.widget.data.linkTo);
           const c = grid.querySelector(`.card[data-id="${CSS.escape(ev.widget.id)}"]`);
           if (c && prev.updatedAt !== ev.widget.updatedAt && JSON.stringify(prev.data) !== JSON.stringify(ev.widget.data)) {
@@ -653,7 +676,7 @@
             setTimeout(() => c.classList.remove('flash'), 900);
           }
           if (ev.widget.kind === 'livemap') renderLivemap();
-        } else renderAll();
+        } else { renderAll(); reveal(ev.widget); }
       } else if (ev.type === 'remove') {
         state.widgets.delete(ev.id);
         frames.delete(ev.id);
@@ -667,6 +690,13 @@
         perform(ev.activity);
         const w = currentMap();
         if (w) renderSide(w);
+      } else if (ev.type === 'annotation') {
+        state.annotations.set(ev.annotation.id, ev.annotation);
+        canvas.renderAnnotations();
+        document.getElementById('clear-btn').disabled = false;
+      } else if (ev.type === 'annotation-remove') {
+        state.annotations.delete(ev.id);
+        canvas.renderAnnotations();
       } else if (ev.type === 'cleared') {
         toast(`Cleared ${ev.count} widget${ev.count === 1 ? '' : 's'}`, ev.undoable ? { label: 'Undo', run: () => api('POST', '/api/canvas/undo') } : null);
       } else if (ev.type === 'restored') {
@@ -676,6 +706,7 @@
   }
   // ---------- header actions: clear (confirm + undo), share ----------
   let toastEl = null;
+  toastRef.fn = (...a) => toast(...a);
   function toast(text, action, ms = 8000) {
     toastEl?.remove();
     const el = h('div', { class: 'toast', role: 'status' }, h('span', {}, text),
@@ -700,8 +731,10 @@
   }
   document.getElementById('clear-btn').addEventListener('click', async () => {
     const n = state.widgets.size;
-    if (!n) return;
-    if (await confirmDialog({ title: `Clear ${n} widget${n === 1 ? '' : 's'}?`, body: 'Everything on the canvas goes away, including the livemap. Standup cards stay. You can undo right after.', ok: 'Clear canvas', danger: true }))
+    const a = state.annotations.size;
+    if (!n && !a) return;
+    const what = [n ? `${n} widget${n === 1 ? '' : 's'}` : '', a ? `${a} note${a === 1 ? '' : 's'}` : ''].filter(Boolean).join(' and ');
+    if (await confirmDialog({ title: `Clear ${what}?`, body: 'Everything on the canvas goes away, including the livemap and your annotations. Standup cards stay. You can undo right after.', ok: 'Clear canvas', danger: true }))
       await api('POST', '/api/canvas/clear', {});
   });
   const shareMenu = document.getElementById('share-menu');
@@ -718,7 +751,7 @@
   }
   document.getElementById('export-png').addEventListener('click', () => doExport('png'));
   document.getElementById('export-html').addEventListener('click', () => doExport('html'));
-  window.__mcpScreen = { doExport };
+  window.__mcpScreen = { doExport, canvas, state };
 
   setInterval(() => {
     for (const el of document.querySelectorAll('.card-foot .ago[data-iso]')) if (el.dataset.iso) el.textContent = `· ${ago(el.dataset.iso)}`;

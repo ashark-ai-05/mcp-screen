@@ -28,6 +28,10 @@ mcp-screen opens a browser tab next to your terminal and gives the agent somewhe
 
 ## Features
 
+<img src="screenshots/7-showcase.png" alt="the infinite canvas: chart with a circled spike labelled why?, checklist, flow diagram, diff with a sticky note, code, live log tail, offline map, image and timeline">
+
+<sub>One canvas, 17 widget kinds. The yellow circle ("why?") and the sticky note on the diff were drawn by a person; the agent reads them back with `read_canvas`, including the bar they point at. This screenshot comes from `scripts/e2e.mjs`.</sub>
+
 <table>
 <tr>
 <td width="50%" valign="top">
@@ -157,13 +161,15 @@ Gemini CLI disables MCP servers in folders you haven't trusted, so trust the pro
 
 | Tool | What it does |
 | --- | --- |
-| `place_widget` | Put a widget on the canvas (kinds below). Optional `source` + `intervalMs` makes it live (needs your approval). |
-| `update_widget` | Change a widget; shallow-merges `data` by default. |
-| `read_widget` | Read a widget, including your `selection` (clicked bar/row, MCP App messages) and a livemap's `unmappedFiles`. |
-| `read_canvas` | List everything on the canvas. |
+| `place_widget` | Put a widget on the canvas (kinds below). Optional `x`/`y` (world px), otherwise it goes in the first free slot. Optional `source` + `intervalMs` makes it live (needs your approval). |
+| `update_widget` | Change a widget; shallow-merges `data` by default. `x`/`y` moves it. Logs take `data.append`, checklists take `data.set`. |
+| `read_widget` | Read a widget, including your `selection` (clicked bar/row/node/marker, MCP App messages), your `annotations` on it, and a livemap's `unmappedFiles`. |
+| `read_canvas` | List every widget (with `x`, `y`, `width`, `height`) and every annotation with its target widget and data points. |
 | `remove_widget` | Remove one widget. |
 | `clear_canvas` | Remove everything (`undo: true` brings it back). |
 | `ask_user` | Show 2–8 choice cards and wait for your click; returns the choice, or `answered: false` with a reason. |
+| `ask_form` | Show a small form (text, textarea, number, slider, select, checkbox) and wait for Submit; values are validated before the agent gets them. |
+| `tidy_canvas` | Re-pack all widgets into a neat grid (same as the **Tidy up** button). |
 | `post_report` | Add a card to the standup board. |
 
 | kind | data |
@@ -176,6 +182,21 @@ Gemini CLI disables MCP servers in folders you haven't trusted, so trust the pro
 | `kv` | `{ items: { key: value } }` |
 | `status-list` | `{ items: [{ label, status: ok \| fail \| pending \| unknown, detail? }] }` |
 | `livemap` | `{ root?, nodes: [{ id, label, globs }], edges: [{ from, to }] }` |
+| `code` | `{ code, language?, filename?, highlight?: [lines] }`: syntax highlighted, with a Copy button |
+| `diff` | `{ before, after, path? }` or `{ patch }` (unified, multi-file): side-by-side / unified toggle |
+| `diagram` | `{ mermaid }`: Mermaid **flowchart** subset (shapes, labelled edges, chains), laid out automatically |
+| `image` | `{ path }` (absolute, local) or `{ url }` (https/data), `caption?` |
+| `log` | `{ lines, maxLines?, wrap? }`: ANSI colours, error tints, sticks to the bottom; `data.append` adds lines; pair with a `command` source (e.g. `tail -n 200 file`) for a live tail |
+| `checklist` | `{ items: [{ id, label, status: todo \| doing \| done \| failed \| skipped, detail? }] }`: progress bar; `data.set` flips statuses |
+| `map` | `{ markers: [{ lat, lon, label, value?, color? }], bounds? }`: offline world map, no API key |
+| `timeline` | `{ items: [{ at, title, status?, detail? }] }` |
+| `form` | created by `ask_form` only |
+
+### The canvas and your annotations
+
+The canvas is infinite. **Pan** by dragging the background or scrolling, **zoom** with Ctrl/⌘+scroll or `+`/`−`, **F** fits everything, and **Tidy up** re-packs the grid. Drag a card by its header to move it; positions are kept by the hub and show up in `read_canvas`. The minimap (bottom right) jumps anywhere.
+
+The left toolbar lets you talk back with ink: **arrow** (`A`), **circle** (`O`), **highlighter** (`H`) and **sticky note** (`N`), in five colours. Each mark is attached to the widget it lands on, plus the data points under it (bars, rows, log lines, diagram nodes, map markers, diff lines…), so the agent sees for example `{kind:"circle", text:"why?", target:{widgetId:"ci-chart", dataPoints:[{label:"10/09", value:9}]}}`. Select a mark and press Delete to remove it. It's deliberately not a whiteboard: marks exist to point the agent at things.
 
 ### ask_user
 

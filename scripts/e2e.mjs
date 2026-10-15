@@ -249,6 +249,124 @@ const htmlPath = path.join(HOME, 'export.html'); await html.saveAs(htmlPath);
 const htmlText = fs.readFileSync(htmlPath, 'utf8');
 check('Share → HTML export is self-contained (no scripts, CSP default-src none)', !/<script/i.test(htmlText) && /default-src 'none'/.test(htmlText) && /Which pricing layout/.test(htmlText));
 
+// ---- 7b. infinite canvas: Fit, drag to move, Tidy up, minimap ----
+const fitView = async () => { await page.locator('#fit-btn').click(); await sleep(500); };
+check('canvas chrome: zoom bar, minimap and annotation toolbar are shown', (await page.locator('.zoombar').count()) === 1 && (await page.locator('canvas.minimap').isVisible()) && (await page.locator('.toolbar .tool').count()) === 5);
+await fitView();
+const beforeMove = (await call('read_canvas')).widgets.find((w) => w.id === 'fail-rate');
+const head = page.locator('.card[data-id="fail-rate"] .card-head');
+const hb = await head.boundingBox();
+await page.mouse.move(hb.x + 30, hb.y + hb.height / 2);
+await page.mouse.down();
+for (let i = 1; i <= 8; i++) await page.mouse.move(hb.x + 30 + i * 25, hb.y + hb.height / 2 + i * 22);
+await page.mouse.up();
+await sleep(600);
+const afterMove = (await call('read_canvas')).widgets.find((w) => w.id === 'fail-rate');
+check('dragging a card moves it and read_canvas reports the new x/y', afterMove.x !== beforeMove.x || afterMove.y !== beforeMove.y, `${beforeMove.x},${beforeMove.y} -> ${afterMove.x},${afterMove.y}`);
+await page.reload(); await page.waitForSelector('.conn.on'); await sleep(800);
+const reloaded = await page.evaluate(() => { const w = window.__mcpScreen.state.widgets.get('fail-rate'); return [w.x, w.y]; });
+check('moved position survives a page reload', reloaded[0] === afterMove.x && reloaded[1] === afterMove.y);
+await page.locator('#tidy-btn').click(); await sleep(700);
+const tidied = (await call('read_canvas')).widgets;
+const overlap = tidied.some((a, i) => tidied.some((b, j) => j > i && a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height));
+check('Tidy up re-packs widgets with no overlaps', !overlap && tidied.every((w) => w.x >= 0 && w.y >= 0));
+
+// ---- 7c. every new widget kind ----
+const before7 = 'export function total(items: Item[]) {\n  let sum = 0;\n  for (const i of items) sum += i.price;\n  return sum;\n}\n';
+const after7 = 'export function total(items: Item[], coupon?: Coupon) {\n  const sum = items.reduce((s, i) => s + i.price * i.qty, 0);\n  // coupons never take the total below zero\n  return Math.max(0, sum - (coupon?.amount ?? 0));\n}\n';
+await call('place_widget', { id: 'plan', kind: 'checklist', title: 'Fix the flaky checkout test', w: 1, h: 2, data: { items: [{ id: 'repro', label: 'Reproduce locally', status: 'done' }, { id: 'cause', label: 'Find the race', status: 'done', detail: 'coupon fetch resolves after submit' }, { id: 'fix', label: 'Await the coupon response', status: 'doing' }, { id: 'soak', label: 'Soak test 50×', status: 'todo' }, { id: 'pr', label: 'Open PR', status: 'todo' }] } });
+await call('place_widget', { id: 'flow', kind: 'diagram', title: 'Checkout flow', w: 1, h: 3, data: { mermaid: 'flowchart TD\n cart[Cart] --> coupon{Coupon?}\n coupon -->|yes| validate([Validate coupon])\n coupon -->|no| pay[Payment]\n validate --> pay\n pay --> done((Done))' } });
+await call('place_widget', { id: 'diff', kind: 'diff', title: 'src/cart/total.ts', w: 3, h: 2, data: { before: before7, after: after7, path: 'src/cart/total.ts' } });
+await call('place_widget', { id: 'repro', kind: 'code', title: 'Repro script', w: 2, h: 2, data: { filename: 'scripts/repro.sh', code: '#!/usr/bin/env bash\n# run the checkout spec until it fails\nfor i in $(seq 1 50); do\n  npx playwright test checkout.spec.ts --reporter=line || { echo "failed on run $i"; exit 1; }\ndone', highlight: [4] } });
+const logFile = path.join(HOME, 'e2e-run.log');
+fs.writeFileSync(logFile, ['\x1b[90m[12:03:11]\x1b[0m starting chromium', '\x1b[32m✓\x1b[0m cart › adds item (412ms)', '\x1b[31m✗\x1b[0m checkout › applies coupon (5003ms)', '  Error: Timed out 5000ms waiting for expect(locator).toHaveText("$40.00")'].join('\n') + '\n');
+await call('place_widget', { id: 'tail', kind: 'log', title: 'e2e log (live tail)', w: 2, h: 2, data: { lines: [] }, source: { type: 'command', argv: ['tail', '-n', '50', logFile], parse: 'text' }, intervalMs: 1000 });
+await call('place_widget', { id: 'where', kind: 'map', title: 'Failed runs by region', w: 2, h: 2, data: { markers: [{ lat: -33.87, lon: 151.21, label: 'Sydney', value: 4 }, { lat: 38.9, lon: -77.0, label: 'us-east', value: 14, color: '#ff6b81' }, { lat: 50.1, lon: 8.7, label: 'Frankfurt', value: 6 }, { lat: 1.35, lon: 103.8, label: 'Singapore', value: 2 }] } });
+const shotPng = path.join(SHOTS, '1-canvas.png');
+await call('place_widget', { id: 'shot', kind: 'image', title: 'Failure screenshot', w: 1, h: 2, data: { path: shotPng, caption: 'a local PNG, served by the hub behind a nonce' } });
+await call('place_widget', { id: 'incident', kind: 'timeline', title: 'Incident', w: 4, h: 1, data: { items: [{ at: '2026-10-09T09:12:00Z', title: 'First failure', status: 'fail' }, { at: '2026-10-09T10:30:00Z', title: 'Retry added', status: 'info' }, { at: '2026-10-09T14:05:00Z', title: 'Root cause found', status: 'pending' }, { at: '2026-10-10T08:00:00Z', title: 'Fix merged', status: 'ok' }, { at: '2026-10-11T08:00:00Z', title: '50/50 green', status: 'ok' }] } });
+await sleep(800);
+await fitView();
+check('diff renders side by side, toggles to unified', (await page.locator('.card[data-id="diff"] .seg button.on').innerText()) === 'Side by side' && (await page.locator('.card[data-id="diff"] .seg button', { hasText: 'Unified' }).click().then(() => sleep(300)).then(() => page.locator('.card[data-id="diff"] .seg button.on').innerText())) === 'Unified');
+await page.locator('.card[data-id="diff"] .seg button', { hasText: 'Side by side' }).click();
+check('diagram draws every node and edge (incl. the bowed skip edge)', (await page.locator('.card[data-id="flow"] .dnode').count()) === 5 && (await page.locator('.card[data-id="flow"] path.edge').count()) === 5);
+check('image is served by the hub and loads', await page.locator('.card[data-id="shot"] img').evaluate((i) => i.complete && i.naturalWidth > 0 && /^\/img\/shot\?n=/.test(new URL(i.src).pathname + new URL(i.src).search)));
+check('code is highlighted with a copy button', (await page.locator('.card[data-id="repro"] .tk-kw').count()) > 0 && (await page.locator('.card[data-id="repro"] .copy').count()) === 1);
+check('map draws the offline world and every marker', (await page.locator('.card[data-id="where"] path.land').count()) === 1 && (await page.locator('.card[data-id="where"] .mk').count()) === 4);
+check('timeline shows every event', (await page.locator('.card[data-id="incident"] .tl button').count()) === 5);
+const tailApprove = page.locator('.card[data-id="tail"] .btn.primary');
+await tailApprove.click();
+await sleep(1600);
+fs.appendFileSync(logFile, '\x1b[32m✓\x1b[0m checkout › applies coupon (701ms) [retry]\n');
+await sleep(2200);
+const tail = await call('read_widget', { id: 'tail' });
+check('log live-tails an approved `tail` command (new lines arrive)', tail.status === 'live' && tail.data.lines.length === 5 && /retry/.test(tail.data.lines[4]), `${tail.data.lines.length} lines`);
+await call('update_widget', { id: 'plan', data: { set: { fix: 'done', soak: 'doing' } } });
+await sleep(400);
+const plan = await call('read_widget', { id: 'plan' });
+check('checklist set{} updates statuses and progress', plan.data.progress.done === 3 && (await page.locator('.card[data-id="plan"] li.done').count()) === 3);
+
+// ask_form: blocks until the human fills it in on the canvas
+const formAsk = call('ask_form', { prompt: 'Configure the soak test', detail: 'I will run it before opening the PR.', timeoutSeconds: 60, fields: [
+  { id: 'runs', label: 'Runs', type: 'slider', min: 10, max: 200, step: 10, default: 50 },
+  { id: 'browser', label: 'Browser', type: 'select', options: ['chromium', 'firefox', 'webkit'], required: true },
+  { id: 'region', label: 'Region', type: 'text', placeholder: 'us-east', required: true },
+  { id: 'trace', label: 'Record traces', type: 'checkbox', default: true } ] });
+const form = page.locator('.card[data-kind="form"] form.form');
+await form.waitFor();
+await sleep(600);
+await fitView();
+await page.screenshot({ path: path.join(SHOTS, '8-new-kinds.png') });
+await form.locator('[name="browser"]').selectOption('firefox');
+await form.locator('button[type="submit"]').click();
+await sleep(300);
+check('ask_form shows required-field errors inline (does not submit)', /Region/.test(await form.locator('.form-err').innerText()));
+await form.locator('[name="region"]').fill('ap-southeast-2');
+await form.locator('button[type="submit"]').click();
+const formAnswer = await formAsk;
+check('ask_form returns the values the human submitted', formAnswer.submitted === true && formAnswer.values.region === 'ap-southeast-2' && formAnswer.values.browser === 'firefox' && formAnswer.values.runs === 50 && formAnswer.values.trace === true, JSON.stringify(formAnswer));
+
+// ---- 7d. annotations: the human circles the spike and writes "why?" ----
+await call('remove_widget', { id: (await call('read_canvas')).widgets.find((w) => w.kind === 'form').id });
+await fitView();
+await page.keyboard.press('o');
+const spike = await page.locator('.card[data-id="ci-chart"] svg.chart .bar').nth(8).boundingBox();
+const cx = spike.x + spike.width / 2, cy = spike.y + spike.height * 0.3;
+await page.mouse.move(cx - 18, cy - 22); await page.mouse.down();
+for (let i = 1; i <= 10; i++) await page.mouse.move(cx - 18 + i * 3.6, cy - 22 + i * 4.4);
+await page.mouse.up();
+const noteIn = page.locator('.note-edit.inline');
+await noteIn.waitFor();
+await noteIn.fill('why?');
+await noteIn.press('Enter');
+await sleep(500);
+const annChart = await call('read_widget', { id: 'ci-chart' });
+const ann = annChart.annotations?.[0];
+check('a circle drawn in the UI reaches read_widget with its target data point', ann?.kind === 'circle' && ann.text === 'why?' && ann.target?.widgetId === 'ci-chart' && ann.target.dataPoints?.some((p) => p.label === '10/09'), JSON.stringify(ann?.target));
+// sticky note on the diff
+await page.keyboard.press('n');
+const db = await page.locator('.card[data-id="diff"] .card-body').boundingBox();
+await page.mouse.click(db.x + db.width * 0.62, db.y + db.height * 0.55);
+const ta = page.locator('textarea.note-edit');
+await ta.waitFor();
+await ta.fill('Is qty always set? Old carts had no qty.');
+await ta.press('Enter');
+await sleep(500);
+await page.keyboard.press('v');
+const canvasNow = await call('read_canvas');
+check('read_canvas lists both annotations with their targets', canvasNow.annotations.length === 2 && canvasNow.annotations.some((a) => a.kind === 'note' && a.target?.widgetId === 'diff'), canvasNow.annotations.map((a) => `${a.kind}->${a.target?.widgetId}`).join(', '));
+// showcase: keep the new kinds + the annotated chart, tidy, fit
+const keep = new Set(['ci-chart', 'plan', 'flow', 'diff', 'repro', 'tail', 'where', 'shot', 'incident']);
+for (const w of (await call('read_canvas')).widgets) if (!keep.has(w.id)) await call('remove_widget', { id: w.id });
+await call('tidy_canvas');
+await sleep(600);
+const afterTidy = await call('read_canvas');
+check('tidy_canvas keeps annotations attached to their widgets', afterTidy.annotations.length === 2 && afterTidy.annotations.every((a) => a.target && keep.has(a.target.widgetId)));
+await fitView();
+await sleep(3000);
+await sleep(700);
+await page.screenshot({ path: path.join(SHOTS, '7-showcase.png') });
+
 // ---- 8. clear_canvas + undo ----
 const before = (await call('read_canvas')).widgets.length;
 const cleared = await call('clear_canvas', {});

@@ -6,9 +6,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { LocalApi } from './api.js';
 import { AllowList, describeSource, RefreshScheduler, type Runners } from './refresh.js';
-import { CanvasStore, type AskInput } from './store.js';
+import { readImage } from './images.js';
+import { CanvasStore, type AnnotationInput, type AskInput, type FormInput } from './store.js';
 
 type AskInputBody = Omit<AskInput, 'signal'>;
+type FormInputBody = Omit<FormInput, 'signal'>;
 import type { ScreenEvent, Widget } from './types.js';
 
 export const VERSION = '0.1.0';
@@ -83,9 +85,15 @@ export async function startHub(opts: HubOptions = {}): Promise<Hub> {
     });
   });
 
-  const decorate = (w: Widget): Widget & { sourceLabel?: string; frameNonce?: string } => {
-    const out: Widget & { sourceLabel?: string; frameNonce?: string } = { ...w };
+  const decorate = (w: Widget): Widget & { sourceLabel?: string; frameNonce?: string; imageSrc?: string } => {
+    const out: Widget & { sourceLabel?: string; frameNonce?: string; imageSrc?: string } = { ...w };
     if (w.source) out.sourceLabel = describeSource(w.source);
+    if (w.kind === 'image') {
+      const real = store.get(w.id);
+      // Local files go through /img with a per-widget nonce; the browser never learns the path's bytes any other way.
+      if (typeof w.data.path === 'string' && real) out.imageSrc = `/img/${encodeURIComponent(w.id)}?n=${nonceFor(real)}&v=${encodeURIComponent(w.updatedAt)}`;
+      else if (typeof w.data.url === 'string') out.imageSrc = w.data.url;
+    }
     if (w.kind === 'mcp-app') {
       const real = store.get(w.id);
       if (real) out.frameNonce = nonceFor(real);
@@ -109,20 +117,41 @@ export async function startHub(opts: HubOptions = {}): Promise<Hub> {
         'content-type': 'text/html; charset=utf-8',
         'cache-control': 'no-store',
         'content-security-policy':
-          "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; frame-src 'self'; connect-src 'self'; frame-ancestors 'none'",
+          "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; frame-src 'self'; connect-src 'self'; frame-ancestors 'none'",
         'x-content-type-options': 'nosniff',
         'referrer-policy': 'no-referrer',
       });
       res.end(html);
       return;
     }
-    if (req.method === 'GET' && /^\/(fonts\/)?[\w-]+\.(js|css|svg|woff2)$/.test(p)) {
+    if (req.method === 'GET' && /^\/(fonts\/)?[\w-]+\.(js|css|svg|woff2|json)$/.test(p)) {
       const file = path.join(PUBLIC_DIR, p.slice(1));
       if (!fs.existsSync(file)) throw new HttpError(404, 'not found');
       const ext = p.slice(p.lastIndexOf('.') + 1);
-      const type = { js: 'text/javascript; charset=utf-8', css: 'text/css; charset=utf-8', svg: 'image/svg+xml', woff2: 'font/woff2' }[ext];
+      const type = { js: 'text/javascript; charset=utf-8', css: 'text/css; charset=utf-8', svg: 'image/svg+xml', woff2: 'font/woff2', json: 'application/json' }[ext];
       res.writeHead(200, { 'content-type': type ?? 'application/octet-stream', 'x-content-type-options': 'nosniff', 'cache-control': ext === 'woff2' ? 'max-age=86400' : 'no-cache' });
       res.end(fs.readFileSync(file));
+      return;
+    }
+    const img = /^\/img\/([\w.-]+)$/.exec(p);
+    if (req.method === 'GET' && img) {
+      const w = store.get(decodeURIComponent(img[1] as string));
+      if (!w || w.kind !== 'image' || typeof w.data.path !== 'string' || url.searchParams.get('n') !== nonceFor(w)) throw new HttpError(404, 'not found');
+      let file: { type: string; body: Buffer };
+      try {
+        file = readImage(w.data.path);
+      } catch (err) {
+        throw new HttpError(404, (err as Error).message);
+      }
+      res.writeHead(200, {
+        'content-type': file.type,
+        // An SVG opened directly must not run script in our origin.
+        'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+        'x-content-type-options': 'nosniff',
+        'cache-control': 'no-store',
+        'content-disposition': 'inline',
+      });
+      res.end(file.body);
       return;
     }
     const frame = /^\/frame\/([\w.-]+)$/.exec(p);
@@ -166,6 +195,18 @@ export async function startHub(opts: HubOptions = {}): Promise<Hub> {
     if (req.method === 'POST' && p === '/api/file-events') return send(res, 200, { result: store.fileEvent(body as never) });
     if (req.method === 'POST' && p === '/api/canvas/clear') return send(res, 200, { result: await api.clear() });
     if (req.method === 'POST' && p === '/api/canvas/undo') return send(res, 200, { result: await api.undoClear() });
+    if (req.method === 'POST' && p === '/api/canvas/tidy') return send(res, 200, { result: await api.tidy() });
+    if (req.method === 'POST' && p === '/api/annotations') return send(res, 200, { result: store.annotate(body as AnnotationInput) });
+    const ann = /^\/api\/annotations\/([\w.-]+)$/.exec(p);
+    if (ann && req.method === 'DELETE') return send(res, 200, { result: store.removeAnnotation(ann[1] as string) });
+    if (ann && req.method === 'PATCH') return send(res, 200, { result: store.updateAnnotation(ann[1] as string, body as { text?: string }) });
+    if (req.method === 'POST' && p === '/api/ask-form') {
+      const ctrl = new AbortController();
+      res.on('close', () => {
+        if (!res.writableFinished) ctrl.abort();
+      });
+      return send(res, 200, { result: await api.askForm({ ...(body as FormInputBody), signal: ctrl.signal }) });
+    }
     if (req.method === 'POST' && p === '/api/ask') {
       const ctrl = new AbortController();
       res.on('close', () => {
@@ -175,7 +216,7 @@ export async function startHub(opts: HubOptions = {}): Promise<Hub> {
       return send(res, 200, { result });
     }
 
-    const m = /^\/api\/widgets\/([^/]+)(?:\/(selection|approve|deny|revoke|refresh|call|answer))?$/.exec(p);
+    const m = /^\/api\/widgets\/([^/]+)(?:\/(selection|approve|deny|revoke|refresh|call|answer|submit|move))?$/.exec(p);
     if (!m) throw new HttpError(404, 'not found');
     const id = decodeURIComponent(m[1] as string);
     const action = m[2];
@@ -186,6 +227,13 @@ export async function startHub(opts: HubOptions = {}): Promise<Hub> {
     }
     if (req.method !== 'POST') throw new HttpError(405, 'method not allowed');
     switch (action) {
+      case 'submit':
+        return send(res, 200, { result: store.submitForm(id, ((body as { values?: unknown }).values ?? {}) as Record<string, unknown>) });
+      case 'move': {
+        const { x, y } = body as { x?: unknown; y?: unknown };
+        if (typeof x !== 'number' || typeof y !== 'number') throw new HttpError(400, 'move needs numeric x and y');
+        return send(res, 200, { result: store.move(id, x, y) });
+      }
       case 'answer':
         return send(res, 200, { result: store.answer(id, String((body as { choice?: unknown }).choice ?? '')) });
       case 'selection':
@@ -217,6 +265,7 @@ export async function startHub(opts: HubOptions = {}): Promise<Hub> {
       reports: store.listReports(),
       activity: store.recentActivity(),
       canUndoClear: store.canUndoClear(),
+      annotations: store.listAnnotations(),
     };
   }
 

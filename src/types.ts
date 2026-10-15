@@ -8,7 +8,16 @@ export type WidgetKind =
   | 'status-list'
   | 'mcp-app'
   | 'question'
-  | 'livemap';
+  | 'livemap'
+  | 'diff'
+  | 'diagram'
+  | 'image'
+  | 'log'
+  | 'checklist'
+  | 'form'
+  | 'code'
+  | 'map'
+  | 'timeline';
 
 /** Where a live widget pulls fresh data from. Refreshed server-side, no LLM involved. */
 export type WidgetSource =
@@ -23,9 +32,12 @@ export interface Widget {
   kind: WidgetKind;
   title: string;
   data: Record<string, unknown>;
-  /** Grid span hints, 1-4 columns, 1-4 rows. */
+  /** Size as grid spans: 1-4 columns (300px) x 1-4 rows (150px). */
   w: number;
   h: number;
+  /** Top-left position on the infinite canvas, in world pixels. */
+  x: number;
+  y: number;
   source?: WidgetSource;
   intervalMs?: number;
   status: LiveStatus;
@@ -86,10 +98,34 @@ export interface Activity {
   at: string;
 }
 
+export type AnnotationKind = 'arrow' | 'circle' | 'highlight' | 'note';
+
+/** What an annotation points at: a widget, and the data points under it when the browser could tell. */
+export interface AnnotationTarget {
+  widgetId: string;
+  title: string;
+  kind: WidgetKind;
+  /** e.g. [{label:"10/09", value:9}] for a circled chart bar, [{row:{...}}] for a table row. */
+  dataPoints?: unknown[];
+}
+
+/** Something the human drew on the canvas. Points are world pixels. */
+export interface Annotation {
+  id: string;
+  kind: AnnotationKind;
+  points: Array<[number, number]>;
+  text?: string;
+  color: string;
+  target?: AnnotationTarget;
+  createdAt: string;
+}
+
 export type ScreenEvent =
   | { type: 'widget'; widget: Widget }
   | { type: 'remove'; id: string }
   | { type: 'report'; report: Report }
   | { type: 'activity'; activity: Activity }
   | { type: 'cleared'; count: number; undoable: boolean }
-  | { type: 'restored'; count: number };
+  | { type: 'restored'; count: number }
+  | { type: 'annotation'; annotation: Annotation }
+  | { type: 'annotation-remove'; id: string };

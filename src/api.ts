@@ -1,6 +1,6 @@
 import { validateSource } from './refresh.js';
 import type { RefreshScheduler } from './refresh.js';
-import type { AskInput, AskResult, CanvasStore, PlaceInput, ReportInput, UpdateInput } from './store.js';
+import type { AskInput, AskResult, CanvasStore, FormInput, FormResult, PlaceInput, ReportInput, UpdateInput } from './store.js';
 import type { Activity, FileEvent, Report, Widget } from './types.js';
 
 /** Everything the MCP tools and hooks need. Implemented in-process or over HTTP to a running hub. */
@@ -16,6 +16,9 @@ export interface ScreenApi {
   undoClear(): Promise<{ restored: number }>;
   /** Blocks until the human answers, the timeout passes, or `signal` aborts. */
   ask(input: AskInput): Promise<AskResult>;
+  /** Blocks until the human submits the form, the timeout passes, or `signal` aborts. */
+  askForm(input: FormInput): Promise<FormResult>;
+  tidy(): Promise<Array<{ id: string; x: number; y: number }>>;
   readonly url: string;
 }
 
@@ -59,6 +62,12 @@ export class LocalApi implements ScreenApi {
   }
   async ask(input: AskInput): Promise<AskResult> {
     return this.store.ask(input).result;
+  }
+  async askForm(input: FormInput): Promise<FormResult> {
+    return this.store.askForm(input).result;
+  }
+  async tidy() {
+    return this.store.tidy();
   }
 }
 
@@ -105,6 +114,20 @@ export class RemoteApi implements ScreenApi {
   }
   undoClear() {
     return this.call<{ restored: number }>('POST', '/api/canvas/undo', {});
+  }
+  tidy() {
+    return this.call<Array<{ id: string; x: number; y: number }>>('POST', '/api/canvas/tidy', {});
+  }
+  async askForm(input: FormInput): Promise<FormResult> {
+    const { signal, ...body } = input;
+    const timeout = AbortSignal.timeout((body.timeoutMs ?? 180_000) + 10_000);
+    const combined = signal ? AbortSignal.any([signal, timeout]) : timeout;
+    try {
+      return await this.call<FormResult>('POST', '/api/ask-form', body, combined);
+    } catch (err) {
+      if (signal?.aborted) return { submitted: false, reason: 'cancelled', widgetId: '' };
+      throw err;
+    }
   }
   async ask(input: AskInput): Promise<AskResult> {
     const { signal, ...body } = input;

@@ -39,8 +39,17 @@ A widget can carry a `source` (a command, URL or MCP tool) that the server re-ru
 ## Questions, clearing and exports
 
 - `ask_user` only collects a click. Choice labels and previews are rendered as text. There is no MCP tool to answer a question, so an agent can't answer its own question through MCP. Every wait has a hard limit of 15 minutes.
-- `clear_canvas` keeps one undo snapshot in memory only. An open question is never put into the snapshot.
+- `clear_canvas` keeps one undo snapshot in memory only. Open questions and forms are never put into the snapshot.
 - Exports happen entirely in your browser; nothing is uploaded. The HTML export removes all scripts, iframes and `on*` attributes and carries a `default-src 'none'` CSP, so the file can't run code or make requests. MCP App frames are replaced with a placeholder. **An export contains whatever is on the canvas.** Check it before you share it.
+
+## Images, maps and annotations
+
+- **Local images** (`image` with `path`): the path must be absolute, end in png/jpg/jpeg/gif/webp/svg, resolve (after symlinks) to a regular file of at most 20 MB, and its magic bytes must match an image type. It is served only at `/img/<id>?n=<nonce>`, with the type taken from the sniffed bytes (never the extension) and `Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; sandbox`, so an SVG cannot run script. An agent can still show you any image file your user account can read. Treat an image widget like any other output from the agent.
+- **URL images** (`image` with `url`): only `https:` and `data:image/` URLs are accepted. The page CSP allows `img-src https:` for this, so **your browser fetches the URL directly and that host sees your IP address and the request time**. Nothing else on the page loads from the network.
+- **Maps** are fully offline: the coastlines are a bundled 44 KB Natural Earth 1:110m file (`public/world-110m.json`, public domain; see `public/LICENSE-world-atlas.txt`). There are no tiles, API keys or network requests.
+- **Diagrams** use a built-in parser for a subset of Mermaid flowcharts. Mermaid itself (which needs `eval`) is not bundled. Labels render as SVG text, never as HTML.
+- **Annotations** (your arrows, circles, highlights and notes) are stored only in the hub's memory and are readable by any agent connected to the canvas. Don't write secrets in notes. Text is rendered with `textContent`.
+- **Forms** (`ask_form`): values are checked against the field definitions on the server before the agent sees them. There is no MCP tool that submits a form.
 
 ## Reporting
 
