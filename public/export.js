@@ -1,4 +1,4 @@
-// mcp-screen share/export: a self-contained HTML snapshot and a 2x PNG of the current view.
+// mcp-screen share/export: a self-contained HTML snapshot and a PNG of the whole canvas (every widget, not just the view).
 // Pure helpers live on McpScreenExport so they can be unit-tested outside the browser.
 (function (root) {
   'use strict';
@@ -20,7 +20,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:">
 <title>${escapeHtml(title)}</title>
 <style>${style}
-.card, .rep, .col, .node, .choice, table.t tbody tr, svg.chart .bar, .view.active { animation: none !important; }
+*, *::before, *::after { animation: none !important; transition: none !important; }
 .snapshot-note { color: var(--muted); font-size: 12px; margin: 0 22px 18px; }
 </style></head>
 <body class="exported">${safeBody}
@@ -64,9 +64,50 @@
       f.replaceWith(ph);
     });
     clone.querySelectorAll('.caption, .flyer, .ripple').forEach((n) => n.remove());
+    // images are inlined so the snapshot needs no network (same-origin ones only; others get a placeholder)
+    const liveImgs = view.querySelectorAll('img');
+    clone.querySelectorAll('img').forEach((im, i) => {
+      const src = liveImgs[i];
+      try {
+        if (!src || !src.complete || !src.naturalWidth) throw new Error('not loaded');
+        const c = document.createElement('canvas');
+        c.width = src.naturalWidth; c.height = src.naturalHeight;
+        c.getContext('2d').drawImage(src, 0, 0);
+        im.src = c.toDataURL('image/png');
+        im.removeAttribute('srcset');
+      } catch { im.removeAttribute('src'); im.alt = `${im.alt || 'image'} (not included in snapshots)`; }
+    });
+    let width = Math.ceil(document.documentElement.clientWidth);
+    let height = Math.ceil(Math.max(document.documentElement.scrollHeight, window.innerHeight));
+    const full = fullCanvas(clone);
+    if (full) { width = Math.max(width, full.width); height = document.querySelector('header.top').offsetHeight + full.height + 60; }
     const main = document.createElement('main');
     main.append(clone);
-    return { header, main, width: Math.ceil(document.documentElement.clientWidth), height: Math.ceil(Math.max(document.documentElement.scrollHeight, window.innerHeight)) };
+    return { header, main, width, height, full };
+  }
+
+  /** On the canvas tab, lay the cloned world out at 1:1 so every widget and note is in the snapshot. */
+  function fullCanvas(clone) {
+    const cv = root.__mcpScreen && root.__mcpScreen.canvas;
+    const stage = clone.querySelector('#stage') || (clone.id === 'stage' ? clone : null);
+    const b = cv && stage && cv.bounds();
+    if (!b) return null;
+    const notes = root.__mcpScreen.state.annotations;
+    const talky = [...notes.values()].some((a) => a.text);
+    const pad = 32, extraR = talky ? 300 : 0, extraB = talky ? 160 : 0;
+    const width = Math.ceil(b.x1 - b.x0 + pad * 2 + extraR), height = Math.ceil(b.y1 - b.y0 + pad * 2 + extraB);
+    stage.querySelectorAll('.toolbar, .zoombar, .minimap, .dots, .empty').forEach((n) => n.remove());
+    stage.querySelectorAll('.culled').forEach((n) => n.classList.remove('culled'));
+    stage.classList.remove('moving');
+    stage.style.cssText += `;width:${width}px;height:${height}px;min-height:0;max-height:none;overflow:visible;position:relative;flex:none`;
+    const world = stage.querySelector('#world');
+    if (world) world.style.transform = `translate(${pad - b.x0}px, ${pad - b.y0}px) scale(1)`;
+    return { width, height };
+  }
+
+  /** Largest scale ≤ want that keeps the PNG under browser canvas limits. */
+  function pngScale(width, height, want = 2) {
+    return Math.max(0.25, Math.min(want, 16000 / width, 16000 / height, Math.sqrt(1.2e8 / (width * height))));
   }
 
   async function exportHtml() {
@@ -83,10 +124,12 @@
     const css = await (await fetch('/app.css')).text();
     const font = await fontAsDataUrl();
     const { header, main, width, height } = snapshotDom();
+    scale = pngScale(width, height, scale);
     const style = css.replace(/url\(['"]?\/fonts\/inter-var-latin\.woff2['"]?\)/g, `url('${font}')`)
       // backdrop blur doesn't survive foreignObject; give glass a solid-ish base instead
       + `\n.card,.rep,.panel,.map-wrap,.node{backdrop-filter:none!important;background-color:rgba(20,24,36,.92)}
-         .card,.rep,.col,.node,.choice,table.t tbody tr,svg.chart .bar,.view.active{animation:none!important}
+         *,*::before,*::after{animation:none!important;transition:none!important}
+         .ann-x,.reply-in,.note .x{display:none!important}
          .actions{display:none!important}`;
     const wrap = document.createElement('div');
     wrap.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml');
@@ -102,8 +145,8 @@
     const url = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
     await new Promise((res, rej) => { img.onload = res; img.onerror = () => rej(new Error('could not rasterise the snapshot')); img.src = url; });
     const canvas = document.createElement('canvas');
-    canvas.width = width * scale;
-    canvas.height = height * scale;
+    canvas.width = Math.round(width * scale);
+    canvas.height = Math.round(height * scale);
     const ctx = canvas.getContext('2d');
     ctx.scale(scale, scale);
     ctx.fillStyle = '#07080d';
@@ -114,5 +157,5 @@
     return blob;
   }
 
-  root.McpScreenExport = { buildStaticHtml, slug, escapeHtml, exportHtml, exportPng };
+  root.McpScreenExport = { buildStaticHtml, slug, escapeHtml, pngScale, exportHtml, exportPng };
 })(typeof window !== 'undefined' ? window : globalThis);

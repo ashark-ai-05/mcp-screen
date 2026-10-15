@@ -7,6 +7,7 @@ import { CanvasStore } from '../src/store.js';
 type ExportApi = {
   buildStaticHtml(o: { css: string; fontDataUrl: string | null; title: string; bodyHtml: string; when: string }): string;
   slug(d?: Date): string;
+  pngScale(w: number, h: number, want?: number): number;
 };
 function loadExport(): ExportApi {
   const sandbox: Record<string, unknown> = {};
@@ -42,6 +43,13 @@ describe('share: static HTML export', () => {
     const html = ex.buildStaticHtml({ css, fontDataUrl: null, title: 't', bodyHtml: '', when: '' });
     expect(html).not.toContain('@font-face');
     expect(ex.slug(new Date(2026, 9, 15, 9, 5, 7))).toBe('mcp-screen-20261015-090507');
+  });
+
+  it('keeps a full-canvas PNG inside browser canvas limits', () => {
+    expect(ex.pngScale(1400, 900)).toBe(2);
+    const s = ex.pngScale(12000, 6000);
+    expect(12000 * s).toBeLessThanOrEqual(16000);
+    expect(12000 * s * 6000 * s).toBeLessThanOrEqual(1.2e8 + 1);
   });
 });
 

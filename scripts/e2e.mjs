@@ -394,6 +394,18 @@ await fitView();
 await sleep(3000);
 await sleep(700);
 await page.screenshot({ path: path.join(SHOTS, '7-showcase.png') });
+// full-canvas export: zoom right in so most cards are off screen, then export
+await page.evaluate(() => window.__mcpScreen.canvas.focusOn('ci-chart', 1.6));
+await sleep(700);
+const [fullPng] = await Promise.all([page.waitForEvent('download'), page.evaluate(() => window.__mcpScreen.doExport('png'))]);
+const fullPath = path.join(SHOTS, '7b-full-canvas-export.png'); await fullPng.saveAs(fullPath);
+const pngBuf = fs.readFileSync(fullPath);
+const pw = pngBuf.readUInt32BE(16), ph = pngBuf.readUInt32BE(20);
+const [fullHtml] = await Promise.all([page.waitForEvent('download'), page.evaluate(() => window.__mcpScreen.doExport('html'))]);
+const fh = fs.readFileSync(await fullHtml.path(), 'utf8');
+const titles = ['CI failures', 'Checkout flow', 'Repro script', 'Incident', 'Failed runs by region'];
+check('Share exports the whole canvas, not just the view (every widget in the HTML; PNG covers the world)', titles.every((t) => fh.includes(t)) && !/class="card[^"]*culled/.test(fh) && pw > 1600 && ph > 1000, `${pw}x${ph}`);
+await fitView();
 
 // ---- 8. clear_canvas + undo ----
 const before = (await call('read_canvas')).widgets.length;
