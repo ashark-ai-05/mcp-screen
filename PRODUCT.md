@@ -86,7 +86,9 @@ A running critique, written as the product owner before each round of work. Shor
 2. **Agent discovery of pending questions.** `pendingQuestions` exists, but nothing pokes the agent when a new note arrives (no hook / notification); humans still have to wait for the next turn.
 3. **Canvas switcher discoverability.** Pills only appear once a second canvas exists; a first-timer never sees them.
 
+**Done immediately after the critique:** pulsing “N waiting” on the notes pill; the canvas switcher always shows a “+ project” affordance so named canvases are discoverable before a second canvas exists.
+
 **Next highest-impact (for a later night):**
-1. A tiny "N waiting" badge that pulses when pendingQuestions grows, plus an optional Claude Code hook that injects "you have N notes waiting on the canvas".
+1. An optional Claude Code hook that injects “you have N notes waiting on the canvas” when `pendingQuestions` is non-empty.
 2. Tap a chart bar / table row on touch devices to leave a note without drawing.
-3. Per-canvas Share filename and a "copy link to this canvas" that is still localhost-only but names the project.
+3. Per-canvas Share filename and a “copy link to this canvas” that is still localhost-only but names the project.
