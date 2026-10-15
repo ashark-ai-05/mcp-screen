@@ -2,9 +2,15 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import { describe, expect, it } from 'vitest';
 
+type Store = { store: Record<string, string>; getItem(k: string): string | null; setItem(k: string, v: string): void };
 function load() {
-  const sandbox: Record<string, unknown> = { localStorage: { store: {} as Record<string, string>, getItem(k: string) { return this.store[k] ?? null; }, setItem(k: string, v: string) { this.store[k] = v; } } };
-  vm.runInNewContext(fs.readFileSync('public/notify-prefs.js', 'utf8'), { globalThis: sandbox, localStorage: sandbox.localStorage });
+  const localStorage: Store = {
+    store: {},
+    getItem(k) { return this.store[k] ?? null; },
+    setItem(k, v) { this.store[k] = v; },
+  };
+  const sandbox: Record<string, unknown> = { localStorage };
+  vm.runInNewContext(fs.readFileSync('public/notify-prefs.js', 'utf8'), { globalThis: sandbox, localStorage });
   return sandbox.McpScreenNotify as {
     inQuietHours(p: { quietStart: number | null; quietEnd: number | null }, d?: Date): boolean;
     shouldNotify(p: { muted: boolean; mutedCanvases: string[]; quietStart: number | null; quietEnd: number | null }, canvasId?: string, opts?: { permission?: string; now?: Date }): boolean;
