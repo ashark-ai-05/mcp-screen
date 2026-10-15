@@ -31,6 +31,7 @@
     window.addEventListener('resize', () => { rectCache = null; });
     window.addEventListener('scroll', () => { rectCache = null; }, true);
     const toWorld = (cx, cy) => { const r = stageRect(); return [(cx - r.left - view.x) / view.z, (cy - r.top - view.y) / view.z]; };
+    const toScreen = (wx, wy) => { const r = stageRect(); return [wx * view.z + view.x + r.left, wy * view.z + view.y + r.top]; };
     const apply = () => {
       world.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.z})`;
       const cell = Math.max(8, 26 * view.z);
@@ -393,9 +394,16 @@
       const card = grid.querySelector(`.card[data-id="${CSS.escape(target.id)}"]`);
       if (!card) return { widgetId: target.id };
       const found = [];
+      // the inner scroller under the mark: only points visible in it count, and its offset is remembered
+      const [sx, sy] = toScreen(anchor[0], anchor[1]);
+      const scs = scrollersOf(card);
+      const sc = scs.filter((el) => { const r = el.getBoundingClientRect(); return sx >= r.left && sx <= r.right && sy >= r.top && sy <= r.bottom; }).pop();
+      const clip = sc && sc.getBoundingClientRect();
+      const scroll = sc && (sc.scrollTop || sc.scrollLeft) ? { index: scs.indexOf(sc), top: sc.scrollTop, left: sc.scrollLeft } : undefined;
       const cands = [...card.querySelectorAll('[data-pt]')].map((el) => {
         const r = el.getBoundingClientRect();
         if (!r.width && !r.height) return null;
+        if (clip && sc.contains(el) && (r.bottom < clip.top || r.top > clip.bottom || r.right < clip.left || r.left > clip.right)) return null;
         const [cx, cy] = toWorld(r.left + r.width / 2, r.top + r.height / 2);
         const [lx, ly] = toWorld(r.left, r.top);
         const [rx, ry] = toWorld(r.right, r.bottom);
@@ -403,7 +411,10 @@
       }).filter(Boolean);
       if (kind === 'circle') {
         const cx = (box.x0 + box.x1) / 2, cy = (box.y0 + box.y1) / 2, rx = (box.x1 - box.x0) / 2 + 6, ry = (box.y1 - box.y0) / 2 + 6;
-        for (const c of cands) if (((c.cx - cx) / rx) ** 2 + ((c.cy - cy) / ry) ** 2 <= 1) found.push(c);
+        for (const c of cands) {
+          // a small mark: centre inside the ellipse; a wide row: crosses the circle's middle and its centre line is inside it
+          if (((c.cx - cx) / rx) ** 2 + ((c.cy - cy) / ry) ** 2 <= 1 || (c.lx <= cx && c.rx >= cx && Math.abs(c.cy - cy) <= ry - 6 && (c.rx - c.lx) > 2 * rx)) found.push(c);
+        }
       } else if (kind === 'highlight') {
         for (const c of cands) if (pts.some(([x, y]) => x >= c.lx - 4 && x <= c.rx + 4 && y >= c.ly - 4 && y <= c.ry + 4)) found.push(c);
       } else {
@@ -416,14 +427,49 @@
         }
       }
       const dataPoints = found.slice(0, 20).map((c) => { try { return JSON.parse(c.el.dataset.pt); } catch { return null; } }).filter(Boolean);
-      return { widgetId: target.id, dataPoints };
+      return { widgetId: target.id, dataPoints, scroll };
     }
+    function scrollersOf(card) {
+      return [...card.querySelectorAll('*')].filter((el) => {
+        if (el.scrollHeight <= el.clientHeight + 1 && el.scrollWidth <= el.clientWidth + 1) return false;
+        const o = getComputedStyle(el);
+        return /auto|scroll/.test(o.overflowY + o.overflowX);
+      });
+    }
+    // marks drawn on scrolled content follow it, and fade when their content scrolls out of view
+    let followRaf = 0;
+    function follow() {
+      followRaf = 0;
+      for (const a of state.annotations.values()) {
+        const sc = a.target && a.target.scroll;
+        const el = notes.get(a.id);
+        if (!sc || !el) continue;
+        const card = grid.querySelector(`.card[data-id="${CSS.escape(a.target.widgetId)}"]`);
+        const scroller = card && scrollersOf(card)[sc.index];
+        let dx = 0, dy = 0, away = false;
+        if (scroller) {
+          dx = sc.left - scroller.scrollLeft; dy = sc.top - scroller.scrollTop;
+          const r = scroller.getBoundingClientRect();
+          const [x0, y0] = toWorld(r.left, r.top), [x1, y1] = toWorld(r.right, r.bottom);
+          const xs = a.points.map((p) => p[0] + dx), ys = a.points.map((p) => p[1] + dy);
+          const cx = (Math.min(...xs) + Math.max(...xs)) / 2, cy = (Math.min(...ys) + Math.max(...ys)) / 2;
+          away = cx < x0 || cx > x1 || cy < y0 || cy > y1;
+        }
+        const t = dx || dy ? `${dx}px ${dy}px` : '';
+        if (el.tagName === 'g') el.setAttribute('transform', `translate(${dx} ${dy})`); else el.style.translate = t;
+        el.classList.toggle('scrolled-away', away);
+        if (el._label) { el._label.style.translate = t; el._label.classList.toggle('scrolled-away', away); }
+      }
+    }
+    const scheduleFollow = () => { if (!followRaf) followRaf = requestAnimationFrame(follow); };
+    grid.addEventListener('scroll', scheduleFollow, { capture: true, passive: true });
     function createAnnotation(kind, pts, text) {
-      const { widgetId, dataPoints } = hitTest(kind, pts);
+      const { widgetId, dataPoints, scroll } = hitTest(kind, pts);
       const body = { kind, points: pts.map(([x, y]) => [Math.round(x), Math.round(y)]), color };
       if (text && text.trim()) body.text = text.trim();
       if (widgetId) body.widgetId = widgetId;
       if (dataPoints && dataPoints.length) body.dataPoints = dataPoints;
+      if (scroll) body.scroll = scroll;
       return api('POST', '/api/annotations', body);
     }
     function flashTarget(a) {
@@ -455,7 +501,7 @@
       const last = replies[replies.length - 1];
       const waiting = !last || last.from === 'human';
       const box = h('div', { class: `thread${waiting ? ' waiting' : ''}`, onpointerdown: (e) => e.stopPropagation(), ondblclick: (e) => e.stopPropagation() },
-        replies.map((r, i) => h('div', { class: `reply ${r.from}`, style: { animationDelay: `${i === replies.length - 1 ? 0 : 0}ms` } },
+        replies.map((r, i) => h('div', { class: `reply ${r.from}`, },
           h('span', { class: 'who' }, r.from === 'agent' ? 'agent' : 'you'), h('span', { class: 'rt' }, r.text))),
         waiting ? h('div', { class: 'reply pending' }, h('span', { class: 'dots' }, h('i'), h('i'), h('i')), h('span', {}, 'waiting for the agent')) : null);
       if (!waiting) {
@@ -502,6 +548,7 @@
         notes.set(a.id, el);
       }
       for (const [id, el] of notes) if (!seen.has(id)) { el.classList.add('leaving'); el._label && el._label.remove(); setTimeout(() => el.remove(), 200); notes.delete(id); }
+      scheduleFollow();
       const n = state.annotations.size;
       const open = [...state.annotations.values()].filter((a) => a.text && (!a.replies || !a.replies.length || a.replies[a.replies.length - 1].from === 'human')).length;
       document.getElementById('count-notes').textContent = n ? `${n} note${n === 1 ? '' : 's'} for the agent${open ? ` · ${open} waiting` : ' · all answered'}` : '';

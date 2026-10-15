@@ -404,6 +404,37 @@ await page.locator('.toast .btn').click();
 await sleep(800);
 check('UI Undo restores the cleared widgets', (await call('read_canvas')).widgets.length === before);
 
+// ---- 8b. a circle on scrolled content follows it ----
+await call('clear_canvas', {});
+await call('place_widget', { id: 'long', kind: 'table', title: 'Long table', data: { columns: ['n', 'job'], rows: Array.from({ length: 60 }, (_, i) => [i, `job-${i}`]) }, w: 2, h: 2 });
+await sleep(700);
+await fitView();
+await sleep(500);
+const scroller = page.locator('.card[data-id="long"] .card-body');
+await scroller.evaluate((el) => { el.scrollTop = 400; });
+await sleep(200);
+const sb = await scroller.boundingBox();
+await page.keyboard.press('o');
+const rcx = sb.x + sb.width * 0.3, rcy = sb.y + sb.height * 0.5;
+await page.mouse.move(rcx - 30, rcy - 25); await page.mouse.down();
+for (let i = 1; i <= 8; i++) await page.mouse.move(rcx - 30 + i * 7.5, rcy - 25 + i * 6.25);
+await page.mouse.up();
+await page.locator('.note-edit.inline').waitFor();
+await page.locator('.note-edit.inline').fill('these?');
+await page.locator('.note-edit.inline').press('Enter');
+await sleep(500);
+const sAnn = (await call('read_widget', { id: 'long' })).annotations?.[0];
+const rowIdx = (sAnn?.target?.dataPoints || []).map((d) => d.rowIndex);
+check('a circle on a scrolled table picks the rows on screen, not the top rows', rowIdx.length > 0 && Math.min(...rowIdx) >= 8 && sAnn.target.scroll?.top === 400, JSON.stringify({ rowIdx, scroll: sAnn?.target?.scroll }));
+await scroller.evaluate((el) => { el.scrollTop = 300; });
+await sleep(250);
+const tf = await page.locator(`g.ann[data-ann="${sAnn?.id}"]`).getAttribute('transform');
+check('the circle moves with the content when the card scrolls', /translate\(0 100\)/.test(tf || ''), tf);
+await scroller.evaluate((el) => { el.scrollTop = 0; });
+await sleep(250);
+check('the circle fades when its rows scroll out of view', await page.locator(`g.ann[data-ann="${sAnn?.id}"]`).evaluate((el) => el.classList.contains('scrolled-away')));
+await page.keyboard.press('v');
+
 // ---- 9. back to canvas for the end of the video ----
 await page.locator('.tab[data-tab="canvas"]').click();
 await sleep(2500);

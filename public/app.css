@@ -587,3 +587,4 @@ kbd { display: inline-block; min-width: 20px; padding: 1px 6px; margin: 0 2px; b
 .reply-in { font: inherit; font-size: 12px; padding: 5px 9px; border-radius: 9px; border: 1px solid var(--line-2); background: rgba(10,12,20,.9); color: var(--text); outline: none; width: 200px; }
 .reply-in:focus { border-color: var(--accent); }
 .note .thread .reply { box-shadow: none; }
+.scrolled-away { opacity: .12; transition: opacity .2s; pointer-events: none; }

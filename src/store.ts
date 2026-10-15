@@ -40,6 +40,8 @@ export interface AnnotationInput {
   dataPoints?: unknown[];
   /** Optional hint; the server still checks the geometry. */
   widgetId?: string;
+  /** The card's inner scroll position when drawn (index of the scroller within the card). */
+  scroll?: { index: number; top: number; left: number };
 }
 
 export interface FormInput {
@@ -206,6 +208,10 @@ export class CanvasStore {
     if (w) {
       a.target = { widgetId: w.id, title: w.title, kind: w.kind };
       if (input.dataPoints?.length) a.target.dataPoints = input.dataPoints.slice(0, 50);
+      const sc = input.scroll;
+      if (sc && typeof sc === 'object' && [sc.index, sc.top, sc.left].every((n) => typeof n === 'number' && Number.isFinite(n) && n >= 0 && n < 1e7) && (sc.top || sc.left)) {
+        a.target.scroll = { index: Math.floor(sc.index), top: Math.round(sc.top), left: Math.round(sc.left) };
+      }
     }
     this.annotations.set(a.id, a);
     this.bus.push({ type: 'annotation', annotation: a });

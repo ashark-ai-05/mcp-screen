@@ -107,6 +107,8 @@ export interface AnnotationTarget {
   kind: WidgetKind;
   /** e.g. [{label:"10/09", value:9}] for a circled chart bar, [{row:{...}}] for a table row. */
   dataPoints?: unknown[];
+  /** Where the card's inner scroller was when it was drawn, so the mark can follow the content as it scrolls. */
+  scroll?: { index: number; top: number; left: number };
 }
 
 /** Something the human drew on the canvas. Points are world pixels. */
