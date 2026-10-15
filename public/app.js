@@ -337,7 +337,7 @@
         h('p', { class: 'lead' }, 'Ask your agent to put something here, for example ', h('code', {}, '“chart our last 30 days of CI failures on the screen”')),
         h('ol', { class: 'steps' },
           h('li', {}, h('b', {}, '1'), h('span', {}, 'The agent places widgets: charts, diffs, plans, flows, logs, maps…')),
-          h('li', {}, h('b', {}, '2'), h('span', {}, 'You click, circle or leave a sticky note (tools on the left)')),
+          h('li', {}, h('b', {}, '2'), h('span', {}, 'You circle a bar, long-press a row, or leave a sticky note — the agent reads exactly what you pointed at')),
           h('li', {}, h('b', {}, '3'), h('span', {}, 'The agent reads exactly what you pointed at'))),
         h('div', { class: 'empty-actions' },
           h('button', { class: 'btn accent', id: 'sample-btn', title: 'Places a few example widgets so you can try the canvas. No agent involved; Clear removes them.', onclick: () => loadSample() }, 'Try a sample canvas'),
@@ -729,17 +729,7 @@
     try { dataPoints = [JSON.parse(el.dataset.pt)]; } catch { return; }
     const r = el.getBoundingClientRect();
     const [wx, wy] = canvas.toWorld(r.left + r.width / 2, r.top + r.height / 2);
-    const q = prompt('Ask the agent about this:', '');
-    if (q === null) return;
-    const text = (q || '').trim() || 'what is this?';
-    api('POST', '/api/annotations', {
-      kind: 'note',
-      points: [[Math.round(wx - 10), Math.round(wy - 10)]],
-      text,
-      widgetId: wid,
-      dataPoints,
-      color: '#ffd166',
-    }).then(() => toast('Note left for the agent · it will see this on the next turn', null, 3500));
+    canvas.quickAsk(wx, wy, { widgetId: wid, dataPoints });
   }
   grid.addEventListener('pointerdown', (e) => {
     const el = e.target.closest && e.target.closest('[data-pt]');
@@ -859,7 +849,7 @@
       { id: 'sample-chart', kind: 'chart', title: 'Sample · CI failures, 14 days', w: 2, h: 2, data: { type: 'bar', labels: days, values: [3, 5, 2, 8, 4, 1, 0, 6, 14, 3, 2, 7, 4, 2] } },
       { id: 'sample-plan', kind: 'checklist', title: 'Sample · plan', w: 1, h: 2, data: { items: [{ id: 'a', label: 'Reproduce the flake', status: 'done' }, { id: 'b', label: 'Find the race', status: 'doing' }, { id: 'c', label: 'Fix + soak test', status: 'todo' }] } },
       { id: 'sample-flow', kind: 'diagram', title: 'Sample · flow', w: 1, h: 2, data: { mermaid: 'flowchart TD\n a[Request] --> b{Cached?}\n b -->|yes| c([Serve])\n b -->|no| d[Fetch]\n d --> c' } },
-      { id: 'sample-notes', kind: 'markdown', title: 'Try this', w: 2, h: 1, data: { markdown: 'Press **O** and circle the tallest bar, then type *why?* · drag cards by their title · **F** fits everything · this is sample data, **Clear** removes it' } },
+      { id: 'sample-notes', kind: 'markdown', title: 'Try this', w: 2, h: 1, data: { markdown: 'Press **O** and circle the tallest bar, then type *why?* · on a phone, **long-press** a bar or row · drag cards by their title · **F** fits everything · **Clear** removes this sample' } },
     ];
     for (const w of samples) await api('POST', '/api/widgets', w);
     if (canvas.columnsForView() < 4) await canvas.tidy();

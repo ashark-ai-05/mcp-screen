@@ -463,14 +463,24 @@
     }
     const scheduleFollow = () => { if (!followRaf) followRaf = requestAnimationFrame(follow); };
     grid.addEventListener('scroll', scheduleFollow, { capture: true, passive: true });
+    let pendingMeta = null; // optional { widgetId, dataPoints } from quickAsk (tap / long-press)
     function createAnnotation(kind, pts, text) {
-      const { widgetId, dataPoints, scroll } = hitTest(kind, pts);
+      const hit = hitTest(kind, pts);
+      const widgetId = (pendingMeta && pendingMeta.widgetId) || hit.widgetId;
+      const dataPoints = (pendingMeta && pendingMeta.dataPoints) || hit.dataPoints;
+      const scroll = hit.scroll;
+      pendingMeta = null;
       const body = { kind, points: pts.map(([x, y]) => [Math.round(x), Math.round(y)]), color };
       if (text && text.trim()) body.text = text.trim();
       if (widgetId) body.widgetId = widgetId;
       if (dataPoints && dataPoints.length) body.dataPoints = dataPoints;
       if (scroll) body.scroll = scroll;
       return api('POST', '/api/annotations', body);
+    }
+    /** Touch / Alt+click: open the sticky-note editor already aimed at a data point. */
+    function quickAsk(wx, wy, meta) {
+      pendingMeta = meta || null;
+      editNote({ points: [[Math.round(wx - 10), Math.round(wy - 10)]], color, isNew: true });
     }
     function flashTarget(a) {
       if (!a.target) return;
@@ -560,6 +570,6 @@
 
     window.addEventListener('resize', () => schedule());
     apply();
-    return { position, renderAnnotations, fit, drawMinimap, view, setTool, toWorld, bounds, cull: schedule, panBy, zoomAt, tidy, columnsForView, focusOn };
+    return { position, renderAnnotations, fit, drawMinimap, view, setTool, toWorld, bounds, cull: schedule, panBy, zoomAt, tidy, columnsForView, focusOn, quickAsk };
   };
 })(typeof window !== 'undefined' ? window : globalThis);

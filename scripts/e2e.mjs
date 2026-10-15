@@ -465,8 +465,11 @@ check('the switcher pill brings back the project canvas with its widgets', back.
 // ---- 8d. Alt+click (desktop stand-in for touch long-press) leaves a note on a data point ----
 await page.locator('.card[data-id="long"] .card-body').evaluate((el) => { el.scrollTop = 0; });
 await sleep(200);
-page.once('dialog', async (d) => { await d.accept('why this row?'); });
 await page.locator('.card[data-id="long"] tr[data-pt]').nth(2).click({ modifiers: ['Alt'] });
+const tapEdit = page.locator('textarea.note-edit');
+await tapEdit.waitFor({ timeout: 3000 });
+await tapEdit.fill('why this row?');
+await tapEdit.press('Enter');
 await sleep(600);
 const tapNotes = (await call('read_widget', { id: 'long' })).annotations || [];
 check('Alt+click / touch long-press on a row leaves a note with that data point', tapNotes.some((a) => a.kind === 'note' && a.text === 'why this row?' && a.target?.dataPoints?.some((p) => p.rowIndex === 2)), JSON.stringify(tapNotes.map((a) => a.text)));
