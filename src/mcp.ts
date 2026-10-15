@@ -85,7 +85,7 @@ export const SCREEN_TOOLS: Tool[] = [
     description:
       'List every widget on the canvas with its id, kind, title, live status, selection and position/size in pixels, plus every annotation the human drew ' +
       '(kind arrow|circle|highlight|note, text, and target: the widget and data points it points at). Check annotations when the human says "look at this" or "see my note".',
-    inputSchema: { type: 'object', properties: {} },
+    inputSchema: { type: 'object', properties: { columns: { type: 'number', description: 'Grid width in 300px columns, 1–8 (default 4).' } } },
   },
   {
     name: 'remove_widget',
@@ -168,7 +168,7 @@ export const SCREEN_TOOLS: Tool[] = [
   {
     name: 'tidy_canvas',
     description: 'Re-pack every widget on the canvas into a neat grid (same as the Tidy up button). Returns the new positions.',
-    inputSchema: { type: 'object', properties: {} },
+    inputSchema: { type: 'object', properties: { columns: { type: 'number', description: 'Grid width in 300px columns, 1–8 (default 4).' } } },
   },
   {
     name: 'post_report',
@@ -337,7 +337,7 @@ export async function callScreenTool(api: ScreenApi, name: string, args: unknown
         }
       }
       case 'tidy_canvas':
-        return ok({ positions: await api.tidy() });
+        return ok({ positions: await api.tidy(z.object({ columns: z.number().int().min(1).max(8).optional() }).parse(args ?? {}).columns) });
       case 'post_report': {
         const r = await api.postReport(ReportZ.parse(args) as never);
         return ok({ id: r.id, posted: true });

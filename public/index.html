@@ -11,7 +11,7 @@
 </head>
 <body>
   <header class="top">
-    <div class="brand"><span class="logo"></span>mcp-screen</div>
+    <div class="brand"><span class="logo"></span><span class="brand-name">mcp-screen</span></div>
     <nav class="tabs" role="tablist">
       <button class="tab active" data-tab="canvas">Canvas<span class="count" id="count-canvas"></span></button>
       <button class="tab" data-tab="standup">Standup<span class="count" id="count-standup"></span></button>
@@ -20,7 +20,7 @@
     <div class="actions">
       <div class="menu" id="share-menu">
         <button class="btn" id="share-btn" title="Export this view">
-          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 10V2M5 5l3-3 3 3M3 9v4h10V9"/></svg>Share
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 10V2M5 5l3-3 3 3M3 9v4h10V9"/></svg><span class="lbl">Share</span>
         </button>
         <div class="menu-pop">
           <button id="export-png"><span>🖼</span><span>Download PNG<small>A crisp 2× image of this view</small></span></button>
@@ -28,7 +28,7 @@
         </div>
       </div>
       <button class="btn ghost" id="clear-btn" title="Clear the canvas">
-        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M3 4h10M6 4V2.5h4V4M4.5 4l.7 9.5h5.6l.7-9.5"/></svg>Clear
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M3 4h10M6 4V2.5h4V4M4.5 4l.7 9.5h5.6l.7-9.5"/></svg><span class="lbl">Clear</span>
       </button>
       <div class="conn" id="conn"><span class="dot"></span><span id="conn-text">connecting</span></div>
     </div>

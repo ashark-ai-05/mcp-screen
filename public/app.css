@@ -38,7 +38,7 @@ body::before { /* aurora mesh */
     radial-gradient(40vmax 30vmax at 78% 8%, rgba(110, 130, 255, .20), transparent 60%),
     radial-gradient(36vmax 28vmax at 12% 92%, rgba(197, 140, 255, .14), transparent 60%),
     radial-gradient(30vmax 22vmax at 55% 60%, rgba(79, 224, 176, .06), transparent 65%);
-  filter: blur(10px); animation: drift 26s ease-in-out infinite alternate;
+  will-change: transform; animation: drift 26s ease-in-out infinite alternate;
 }
 body::after { /* fine grain + grid */
   content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none; opacity: .5;
@@ -95,8 +95,10 @@ main { padding: 22px; }
 .grid { position: absolute; left: 0; top: 0; width: 0; height: 0; }
 .card {
   position: absolute; display: flex; flex-direction: column; overflow: hidden; min-height: 0;
-  background: linear-gradient(180deg, var(--glass-2), var(--glass)); border: 1px solid var(--line); border-radius: var(--radius);
-  backdrop-filter: blur(22px) saturate(1.3); box-shadow: var(--shadow);
+  /* the canvas behind a card is only the dot grid, so a pre-blended glass background looks identical
+     to backdrop-filter and keeps pan/zoom at 60 fps with 100+ cards */
+  background: linear-gradient(180deg, var(--glass-2), var(--glass)), #0d1019; border: 1px solid var(--line); border-radius: var(--radius);
+  box-shadow: var(--shadow); contain: layout paint style;
   animation: land .7s var(--ease-spring) both; animation-delay: var(--delay, 0ms);
 }
 .card::before { /* top sheen */
@@ -140,7 +142,7 @@ main { padding: 22px; }
 pre.text { margin: 0; white-space: pre-wrap; font-size: 12px; color: var(--text-2); line-height: 1.5; }
 
 table.t { width: 100%; border-collapse: collapse; font-size: 12.5px; font-variant-numeric: tabular-nums; }
-table.t th { text-align: left; color: var(--muted); font-weight: 560; font-size: 11.5px; padding: 7px 8px; border-bottom: 1px solid var(--line); cursor: pointer; user-select: none; position: sticky; top: 0; background: rgba(24,28,41,.92); backdrop-filter: blur(8px); }
+table.t th { text-align: left; color: var(--muted); font-weight: 560; font-size: 11.5px; padding: 7px 8px; border-bottom: 1px solid var(--line); cursor: pointer; user-select: none; position: sticky; top: 0; background: rgba(24,28,41,.92);  }
 table.t th.sorted::after { content: ' ↓'; color: var(--accent); }
 table.t th.sorted.asc::after { content: ' ↑'; }
 table.t td { padding: 7px 8px; border-bottom: 1px solid rgba(255,255,255,.04); color: var(--text-2); }
@@ -210,7 +212,7 @@ svg.chart .grid-l { stroke: rgba(255,255,255,.05); }
 .q-timer i { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); transform-origin: left; }
 .q-state.answered { color: var(--ok); } .q-state.timeout, .q-state.cancelled { color: var(--warn); }
 
-.empty { position: absolute; inset: 60px 260px 60px 90px; z-index: 3; pointer-events: none; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; color: var(--muted); border: 1px dashed var(--line-2); border-radius: var(--radius); background: rgba(255,255,255,.015); animation: fadeIn .6s var(--ease-out); }
+.empty { position: absolute; inset: 60px 260px 60px 90px; z-index: 3; pointer-events: none; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; color: var(--muted); border: 1px dashed var(--line-2); border-radius: var(--radius); background: rgba(255,255,255,.015); animation: fadeIn .6s var(--ease-out); }
 .empty h2 { color: var(--text); font-weight: 650; margin: 0 0 8px; font-size: 20px; letter-spacing: -0.02em; }
 .empty code { background: rgba(255,255,255,.06); padding: 3px 8px; border-radius: 7px; color: var(--text); }
 
@@ -309,8 +311,10 @@ svg.map .edge-l { fill: var(--muted); font-size: 10px; font-family: 'Inter var',
 main:has(#view-canvas.active) { padding: 0; }
 .stage {
   position: relative; height: calc(100vh - 57px); overflow: hidden; touch-action: none; cursor: default; user-select: none;
-  background-image: radial-gradient(circle at 1px 1px, rgba(255,255,255,.06) 1px, transparent 0);
 }
+/* the dot grid is its own small layer: a pan only translates it (modulo one cell); zoom resizes the cells */
+.dots { position: absolute; left: -80px; top: -80px; right: -80px; bottom: -80px; pointer-events: none; will-change: transform;
+  background-image: radial-gradient(circle at 1px 1px, rgba(255,255,255,.06) 1px, transparent 0); background-size: 26px 26px; }
 .stage.panning, .stage.space { cursor: grab; }
 .stage.panning { cursor: grabbing; }
 .stage[data-tool="arrow"], .stage[data-tool="circle"], .stage[data-tool="highlight"], .stage[data-tool="note"] { cursor: crosshair; }
@@ -327,7 +331,7 @@ main:has(#view-canvas.active) { padding: 0; }
 
 .toolbar, .zoombar {
   position: absolute; z-index: 30; display: flex; gap: 2px; padding: 5px; border-radius: 14px;
-  background: rgba(16,19,29,.78); border: 1px solid var(--line-2); backdrop-filter: blur(18px) saturate(1.3); box-shadow: 0 18px 40px -16px rgba(0,0,0,.8);
+  background: rgba(16,19,29,.94); border: 1px solid var(--line-2);  box-shadow: 0 18px 40px -16px rgba(0,0,0,.8);
 }
 .toolbar { left: 16px; top: 50%; transform: translateY(-50%); flex-direction: column; align-items: center; }
 .zoombar { right: 16px; bottom: 166px; align-items: center; }
@@ -344,9 +348,9 @@ main:has(#view-canvas.active) { padding: 0; }
 .toolbar .sep { width: 20px; height: 1px; background: var(--line-2); margin: 5px 0; }
 .swatch { width: 18px; height: 18px; margin: 3px; border-radius: 50%; border: 2px solid transparent; background: var(--c); cursor: pointer; box-shadow: 0 0 0 1px rgba(0,0,0,.4); transition: transform .15s; }
 .swatch.on { border-color: #fff; transform: scale(1.12); }
-.minimap { position: absolute; right: 16px; bottom: 16px; z-index: 30; width: 220px; height: 140px; border-radius: 14px; cursor: pointer; background: rgba(12,14,22,.8); border: 1px solid var(--line-2); backdrop-filter: blur(14px); box-shadow: 0 18px 40px -16px rgba(0,0,0,.8); }
+.minimap { position: absolute; right: 16px; bottom: 16px; z-index: 30; width: 220px; height: 140px; border-radius: 14px; cursor: pointer; background: rgba(12,14,22,.8); border: 1px solid var(--line-2);  box-shadow: 0 18px 40px -16px rgba(0,0,0,.8); }
 .notes-count { position: absolute; right: 16px; top: 14px; z-index: 25; font-size: 12px; color: #ffe2a0; padding: 0; border-radius: 99px; pointer-events: none; transition: opacity .3s; }
-.notes-count:not(:empty) { padding: 5px 12px; background: rgba(255,209,102,.1); border: 1px solid rgba(255,209,102,.3); backdrop-filter: blur(10px); }
+.notes-count:not(:empty) { padding: 5px 12px; background: rgba(255,209,102,.1); border: 1px solid rgba(255,209,102,.3);  }
 
 /* ---------- annotations ---------- */
 .ink { position: absolute; left: 0; top: 0; overflow: visible; z-index: 900; pointer-events: none; }
@@ -522,3 +526,37 @@ svg.geo .map-load { fill: var(--muted); }
 
 /* ---------- exports: no chrome ---------- */
 .exported .toolbar, .exported .zoombar, .exported .minimap, .exported .notes-count { display: none !important; }
+.card.culled { content-visibility: hidden; }
+.card.culled > * { visibility: hidden; }
+.stage.moving #world { will-change: transform; }
+.stage.moving #world * { animation-play-state: paused !important; transition: none !important; }
+.empty > * { position: relative; }
+.empty .lead { max-width: 560px; line-height: 1.6; }
+.empty .steps { list-style: none; padding: 0; margin: 18px 0 22px; display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+.empty .steps li { display: flex; align-items: center; gap: 10px; max-width: 220px; text-align: left; font-size: 12.5px; line-height: 1.45; padding: 10px 14px; border-radius: 14px; background: rgba(255,255,255,.03); border: 1px solid var(--line); animation: land .7s var(--ease-spring) both; }
+.empty .steps li:nth-child(2) { animation-delay: .08s; } .empty .steps li:nth-child(3) { animation-delay: .16s; }
+.empty .steps b { flex: none; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; font-size: 12px; color: #0b0d14; background: linear-gradient(135deg, var(--accent), var(--accent-2)); }
+.empty-actions { display: flex; gap: 10px; pointer-events: auto; }
+.empty-glow { position: absolute !important; width: 420px; height: 420px; left: 50%; top: 50%; transform: translate(-50%, -50%); border-radius: 50%; background: radial-gradient(circle, rgba(124,156,255,.12), transparent 65%); pointer-events: none; }
+kbd { display: inline-block; min-width: 20px; padding: 1px 6px; margin: 0 2px; border-radius: 6px; font: 600 11px/18px ui-monospace, monospace; text-align: center; color: var(--text); background: rgba(255,255,255,.07); border: 1px solid var(--line-2); border-bottom-width: 2px; }
+.modal.sheet { width: min(640px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow: auto; }
+.sc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 28px; margin: 6px 0 10px; }
+.sc-grid h4 { margin: 6px 0 8px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.sc-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 5px 0; font-size: 13px; border-bottom: 1px solid rgba(255,255,255,.04); }
+@media (max-width: 720px) {
+  .sc-grid { grid-template-columns: 1fr; }
+  .empty { inset: 16px 16px 170px 70px; padding: 12px; }
+  .empty .steps { display: none; }
+  .minimap { display: none; }
+}
+@media (max-width: 640px) {
+  html, body { overflow: hidden; overscroll-behavior: none; }
+  header { gap: 8px !important; padding-left: 10px !important; padding-right: 10px !important; }
+  .brand-name, .actions .lbl, #conn-text { display: none; }
+  .tabs { overflow-x: auto; scrollbar-width: none; flex: 1 1 auto; min-width: 0; }
+  .tab { padding-left: 10px !important; padding-right: 10px !important; }
+  .zoombar { left: 70px; right: 10px; bottom: 10px; justify-content: space-between; }
+  .zoombar .zl { min-width: 44px; }
+}
+.minimap.hidden { opacity: 0; pointer-events: none; transform: translateY(8px); }
+.minimap { transition: opacity .3s, transform .3s; }

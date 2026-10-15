@@ -18,7 +18,7 @@ export interface ScreenApi {
   ask(input: AskInput): Promise<AskResult>;
   /** Blocks until the human submits the form, the timeout passes, or `signal` aborts. */
   askForm(input: FormInput): Promise<FormResult>;
-  tidy(): Promise<Array<{ id: string; x: number; y: number }>>;
+  tidy(columns?: number): Promise<Array<{ id: string; x: number; y: number }>>;
   readonly url: string;
 }
 
@@ -66,8 +66,8 @@ export class LocalApi implements ScreenApi {
   async askForm(input: FormInput): Promise<FormResult> {
     return this.store.askForm(input).result;
   }
-  async tidy() {
-    return this.store.tidy();
+  async tidy(columns?: number) {
+    return this.store.tidy(columns);
   }
 }
 
@@ -115,8 +115,8 @@ export class RemoteApi implements ScreenApi {
   undoClear() {
     return this.call<{ restored: number }>('POST', '/api/canvas/undo', {});
   }
-  tidy() {
-    return this.call<Array<{ id: string; x: number; y: number }>>('POST', '/api/canvas/tidy', {});
+  tidy(columns?: number) {
+    return this.call<Array<{ id: string; x: number; y: number }>>('POST', '/api/canvas/tidy', columns === undefined ? {} : { columns });
   }
   async askForm(input: FormInput): Promise<FormResult> {
     const { signal, ...body } = input;

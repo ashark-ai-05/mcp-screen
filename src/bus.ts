@@ -37,6 +37,9 @@ export class EventBus {
   }
 }
 
+/** A subscriber that falls this far behind is dropped; an SSE client then reconnects and gets a fresh snapshot. */
+export const MAX_QUEUE = 2000;
+
 class Subscriber implements BusSubscription {
   private queue: ScreenEvent[] = [];
   private waiters: Array<(r: IteratorResult<ScreenEvent>) => void> = [];
@@ -47,12 +50,14 @@ class Subscriber implements BusSubscription {
     if (this.closed) return;
     const w = this.waiters.shift();
     if (w) w({ value: event, done: false });
+    else if (this.queue.length >= MAX_QUEUE) this.close();
     else this.queue.push(event);
   }
 
   close(): void {
     if (this.closed) return;
     this.closed = true;
+    this.queue = [];
     this.onClose();
     for (const w of this.waiters.splice(0)) w({ value: undefined, done: true });
   }

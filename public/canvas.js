@@ -24,19 +24,55 @@
 
     // ---------- coordinates ----------
     const sizeOf = (w) => ({ width: w.w * COL + (w.w - 1) * GAP, height: w.h * ROW + (w.h - 1) * GAP });
-    const toWorld = (cx, cy) => { const r = stage.getBoundingClientRect(); return [(cx - r.left - view.x) / view.z, (cy - r.top - view.y) / view.z]; };
+    // the stage only changes size on window resize; reading it per frame would force a layout flush
+    let rectCache = null;
+    const stageRect = () => rectCache || (rectCache = stage.getBoundingClientRect());
+    new ResizeObserver(() => { rectCache = null; }).observe(stage);
+    window.addEventListener('resize', () => { rectCache = null; });
+    window.addEventListener('scroll', () => { rectCache = null; }, true);
+    const toWorld = (cx, cy) => { const r = stageRect(); return [(cx - r.left - view.x) / view.z, (cy - r.top - view.y) / view.z]; };
     const apply = () => {
       world.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.z})`;
-      stage.style.setProperty('--z', view.z);
-      stage.style.backgroundPosition = `${view.x}px ${view.y}px`;
-      stage.style.backgroundSize = `${26 * view.z}px ${26 * view.z}px`;
+      const cell = Math.max(8, 26 * view.z);
+      if (cell !== dotsCell) { dotsCell = cell; dots.style.backgroundSize = `${cell}px ${cell}px`; }
+      dots.style.transform = `translate(${(((view.x % cell) + cell) % cell)}px, ${(((view.y % cell) + cell) % cell)}px)`;
       zoomLabel.textContent = `${Math.round(view.z * 100)}%`;
-      localStorage.setItem(KEY, JSON.stringify(view));
-      drawMinimap();
+      // while the view moves, the world is one composited layer and animations pause, so a pan or
+      // zoom is a GPU transform, not a repaint of every card; it re-rasters sharply 160 ms after
+      if (!stage.classList.contains('moving')) stage.classList.add('moving');
+      clearTimeout(movingTimer);
+      movingTimer = setTimeout(() => stage.classList.remove('moving'), 160);
+      schedule();
     };
+    let movingTimer = 0, dotsCell = 0;
+    const dots = h('div', { class: 'dots', 'aria-hidden': 'true' });
+    stage.prepend(dots);
+    // per-frame work (minimap, culling) is coalesced into one rAF; the saved view is debounced
+    let frameQueued = false, saveTimer = 0;
+    function schedule() {
+      if (frameQueued) return;
+      frameQueued = true;
+      requestAnimationFrame(() => { frameQueued = false; drawMinimap(); cull(); });
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(() => localStorage.setItem(KEY, JSON.stringify(view)), 250);
+    }
+    // cards far outside the viewport skip rendering (content-visibility) but keep their box, so nothing shifts
+    function cull() {
+      const r = stageRect();
+      const m = 400 / view.z;
+      const x0 = -view.x / view.z - m, y0 = -view.y / view.z - m, x1 = (r.width - view.x) / view.z + m, y1 = (r.height - view.y) / view.z + m;
+      for (const card of world.querySelectorAll(':scope .card[data-id]')) {
+        const w = state.widgets.get(card.dataset.id);
+        if (!w) continue;
+        const { width, height } = sizeOf(w);
+        const off = w.x > x1 || w.y > y1 || w.x + width < x0 || w.y + height < y0;
+        if (off !== card.classList.contains('culled')) card.classList.toggle('culled', off);
+      }
+    }
+    const panBy = (dx, dy) => { view.x += dx; view.y += dy; apply(); };
     function zoomAt(z, cx, cy) {
       const nz = Math.min(2.5, Math.max(0.2, z));
-      const r = stage.getBoundingClientRect();
+      const r = stageRect();
       const px = cx - r.left, py = cy - r.top;
       view.x = px - ((px - view.x) / view.z) * nz;
       view.y = py - ((py - view.y) / view.z) * nz;
@@ -53,7 +89,7 @@
     }
     function fit(animate = true) {
       const b = bounds();
-      const r = stage.getBoundingClientRect();
+      const r = stageRect();
       if (!b) { view.x = 32; view.y = 28; view.z = 1; return apply(); }
       // usable area: right of the annotation toolbar, left of the minimap/zoom bar
       const left = 76, right = r.width > 900 ? 250 : 24, pad = 28;
@@ -72,13 +108,14 @@
         svgIcon(t.icon))),
       h('span', { class: 'sep' }),
       COLORS.map((c) => h('button', { class: `swatch${c === color ? ' on' : ''}`, 'data-color': c, title: 'Ink colour', style: { '--c': c }, onclick: () => setColor(c) })));
-    const zoomLabel = h('button', { class: 'zl', title: 'Reset to 100%', onclick: () => { const r = stage.getBoundingClientRect(); zoomAt(1, r.left + r.width / 2, r.top + r.height / 2); } }, '100%');
+    const zoomLabel = h('button', { class: 'zl', title: 'Reset to 100%', onclick: () => { const r = stageRect(); zoomAt(1, r.left + r.width / 2, r.top + r.height / 2); } }, '100%');
     const zoombar = h('div', { class: 'zoombar' },
-      h('button', { class: 'zb', title: 'Zoom out (−)', onclick: () => { const r = stage.getBoundingClientRect(); zoomAt(view.z / 1.2, r.left + r.width / 2, r.top + r.height / 2); } }, '−'),
+      h('button', { class: 'zb', title: 'Zoom out (−)', onclick: () => { const r = stageRect(); zoomAt(view.z / 1.2, r.left + r.width / 2, r.top + r.height / 2); } }, '−'),
       zoomLabel,
-      h('button', { class: 'zb', title: 'Zoom in (+)', onclick: () => { const r = stage.getBoundingClientRect(); zoomAt(view.z * 1.2, r.left + r.width / 2, r.top + r.height / 2); } }, '+'),
+      h('button', { class: 'zb', title: 'Zoom in (+)', onclick: () => { const r = stageRect(); zoomAt(view.z * 1.2, r.left + r.width / 2, r.top + r.height / 2); } }, '+'),
       h('button', { class: 'zb wide', id: 'fit-btn', title: 'Fit everything (F)', onclick: () => fit() }, 'Fit'),
-      h('button', { class: 'zb wide accent', id: 'tidy-btn', title: 'Tidy up: re-pack widgets into a grid', onclick: () => tidy() }, svgIcon('M2 3h5v4H2zM9 3h5v4H9zM2 9h12v4H2z'), 'Tidy up'));
+      h('button', { class: 'zb wide accent', id: 'tidy-btn', title: 'Tidy up: re-pack widgets into a grid', onclick: () => tidy() }, svgIcon('M2 3h5v4H2zM9 3h5v4H9zM2 9h12v4H2z'), 'Tidy up'),
+      h('button', { class: 'zb', id: 'help-btn', title: 'Keyboard shortcuts (?)', 'aria-label': 'Keyboard shortcuts', onclick: () => window.__mcpScreenShortcuts && window.__mcpScreenShortcuts(true) }, '?'));
     const mini = h('canvas', { class: 'minimap', width: 220, height: 140, title: 'Minimap: click or drag to move' });
     stage.append(toolbar, zoombar, mini);
 
@@ -93,16 +130,22 @@
       toolbar.querySelectorAll('.swatch').forEach((b) => b.classList.toggle('on', b.dataset.color === c));
     }
     setTool('select');
+    // how many 300px columns read comfortably on this screen (phones get one, big screens four)
+    function columnsForView() {
+      const r = stageRect();
+      return Math.max(1, Math.min(4, Math.floor((r.width - 100) / 260)));
+    }
     async function tidy() {
       world.classList.add('glide');
-      await api('POST', '/api/canvas/tidy', {});
+      await api('POST', '/api/canvas/tidy', { columns: columnsForView() });
       setTimeout(() => { fit(); world.classList.remove('glide'); }, 380);
     }
 
     let miniMap = null;
     function drawMinimap() {
       const b = bounds();
-      const r = stage.getBoundingClientRect();
+      mini.classList.toggle('hidden', !b);
+      const r = stageRect();
       const g = mini.getContext('2d');
       const W = mini.width, H = mini.height;
       g.clearRect(0, 0, W, H);
@@ -131,7 +174,7 @@
       if (!miniMap) return;
       const rr = mini.getBoundingClientRect();
       const wx = (e.clientX - rr.left - miniMap.ox) / miniMap.k, wy = (e.clientY - rr.top - miniMap.oy) / miniMap.k;
-      const r = stage.getBoundingClientRect();
+      const r = stageRect();
       view.x = r.width / 2 - wx * view.z;
       view.y = r.height / 2 - wy * view.z;
       apply();
@@ -221,8 +264,8 @@
       if (t) return setTool(t.id);
       if (e.key === 'Escape') { setTool('select'); selectAnn(null); }
       if (e.key === 'f') fit();
-      if (e.key === '+' || e.key === '=') { const r = stage.getBoundingClientRect(); zoomAt(view.z * 1.2, r.left + r.width / 2, r.top + r.height / 2); }
-      if (e.key === '-') { const r = stage.getBoundingClientRect(); zoomAt(view.z / 1.2, r.left + r.width / 2, r.top + r.height / 2); }
+      if (e.key === '+' || e.key === '=') { const r = stageRect(); zoomAt(view.z * 1.2, r.left + r.width / 2, r.top + r.height / 2); }
+      if (e.key === '-') { const r = stageRect(); zoomAt(view.z / 1.2, r.left + r.width / 2, r.top + r.height / 2); }
       if ((e.key === 'Delete' || e.key === 'Backspace') && selected) { api('DELETE', `/api/annotations/${selected}`); selected = null; }
     });
     document.addEventListener('keyup', (e) => { if (e.key === ' ') { spaceDown = false; stage.classList.remove('space'); } });
@@ -427,8 +470,8 @@
       drawMinimap();
     }
 
-    window.addEventListener('resize', () => drawMinimap());
+    window.addEventListener('resize', () => schedule());
     apply();
-    return { position, renderAnnotations, fit, drawMinimap, view, setTool, toWorld, bounds };
+    return { position, renderAnnotations, fit, drawMinimap, view, setTool, toWorld, bounds, cull: schedule, panBy, zoomAt, tidy, columnsForView };
   };
 })(typeof window !== 'undefined' ? window : globalThis);

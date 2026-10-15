@@ -168,9 +168,10 @@ export class CanvasStore {
   }
 
   /** Re-pack every widget into a tidy grid, keeping reading order. */
-  tidy(): Array<{ id: string; x: number; y: number }> {
+  tidy(columns?: number): Array<{ id: string; x: number; y: number }> {
     const out: Array<{ id: string; x: number; y: number }> = [];
-    for (const [id, p] of tidy(this.list())) {
+    const cols = Number.isInteger(columns) ? Math.min(8, Math.max(1, columns as number)) : undefined;
+    for (const [id, p] of tidy(this.list(), cols)) {
       this.move(id, p.x, p.y);
       out.push({ id, ...p });
     }

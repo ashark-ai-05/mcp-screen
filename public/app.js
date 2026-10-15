@@ -277,10 +277,11 @@
     document.getElementById('count-canvas').textContent = widgets.length ? String(widgets.length) : '';
     // Keyed reconcile. Cards are never re-parented (moving an iframe in the DOM reloads it and
     // loses the MCP App's state); they are absolutely positioned on the infinite canvas.
-    const existing = new Map([...grid.querySelectorAll('.card')].map((c) => [c.dataset.id, c]));
+    // a card that is animating out is never reused: an undo right after a clear must build a fresh card
+    const existing = new Map([...grid.querySelectorAll('.card:not(.leaving)')].map((c) => [c.dataset.id, c]));
     for (const [id, c] of existing) if (!state.widgets.has(id)) {
       frames.delete(id);
-      if (c.classList.contains('leaving')) continue;
+      existing.delete(id);
       c.classList.add('leaving');
       setTimeout(() => c.remove(), 280);
     }
@@ -290,9 +291,16 @@
     emptyEl = null;
     if (!widgets.length) {
       emptyEl = h('div', { class: 'empty' },
+        h('div', { class: 'empty-glow' }),
         h('h2', {}, 'Your agent’s screen is ready'),
-        h('p', {}, 'Ask your agent to show you something, e.g. ', h('code', {}, '“chart our last 30 days of CI failures on the screen”')),
-        h('p', {}, 'Drag cards by their title · scroll or drag the background to pan · Ctrl/⌘ + scroll to zoom · draw with the tools on the left'));
+        h('p', { class: 'lead' }, 'Ask your agent to put something here, for example ', h('code', {}, '“chart our last 30 days of CI failures on the screen”')),
+        h('ol', { class: 'steps' },
+          h('li', {}, h('b', {}, '1'), h('span', {}, 'The agent places widgets: charts, diffs, plans, flows, logs, maps…')),
+          h('li', {}, h('b', {}, '2'), h('span', {}, 'You click, circle or leave a sticky note (tools on the left)')),
+          h('li', {}, h('b', {}, '3'), h('span', {}, 'The agent reads exactly what you pointed at'))),
+        h('div', { class: 'empty-actions' },
+          h('button', { class: 'btn accent', id: 'sample-btn', title: 'Places a few example widgets so you can try the canvas. No agent involved; Clear removes them.', onclick: () => loadSample() }, 'Try a sample canvas'),
+          h('button', { class: 'btn ghost', onclick: () => shortcuts(true) }, 'Shortcuts ', h('kbd', {}, '?'))));
       stage.append(emptyEl);
     }
     for (const w of widgets) {
@@ -305,6 +313,7 @@
       } else canvas.position(c, w);
     }
     canvas.renderAnnotations();
+    canvas.cull();
   }
   function rerender(id) {
     const w = state.widgets.get(id);
@@ -716,6 +725,41 @@
     toastEl = el;
     setTimeout(() => el.remove(), ms);
   }
+  // ---------- onboarding: sample canvas + shortcut sheet ----------
+  async function loadSample() {
+    const days = Array.from({ length: 14 }, (_, i) => `10/${String(i + 1).padStart(2, '0')}`);
+    const samples = [
+      { id: 'sample-chart', kind: 'chart', title: 'Sample · CI failures, 14 days', w: 2, h: 2, data: { type: 'bar', labels: days, values: [3, 5, 2, 8, 4, 1, 0, 6, 14, 3, 2, 7, 4, 2] } },
+      { id: 'sample-plan', kind: 'checklist', title: 'Sample · plan', w: 1, h: 2, data: { items: [{ id: 'a', label: 'Reproduce the flake', status: 'done' }, { id: 'b', label: 'Find the race', status: 'doing' }, { id: 'c', label: 'Fix + soak test', status: 'todo' }] } },
+      { id: 'sample-flow', kind: 'diagram', title: 'Sample · flow', w: 1, h: 2, data: { mermaid: 'flowchart TD\n a[Request] --> b{Cached?}\n b -->|yes| c([Serve])\n b -->|no| d[Fetch]\n d --> c' } },
+      { id: 'sample-notes', kind: 'markdown', title: 'Try this', w: 2, h: 1, data: { markdown: 'Press **O** and circle the tallest bar, then type *why?* · drag cards by their title · **F** fits everything · this is sample data, **Clear** removes it' } },
+    ];
+    for (const w of samples) await api('POST', '/api/widgets', w);
+    if (canvas.columnsForView() < 4) await canvas.tidy();
+  }
+  let sheet = null;
+  function shortcuts(open = !sheet) {
+    if (!open) { sheet?.remove(); sheet = null; return; }
+    if (sheet) return;
+    const row = (keys, what) => h('div', { class: 'sc-row' }, h('span', {}, ...keys.map((k) => h('kbd', {}, k))), h('span', {}, what));
+    sheet = h('div', { class: 'modal-bg', onclick: (e) => { if (e.target === sheet) shortcuts(false); } },
+      h('div', { class: 'modal sheet', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Keyboard shortcuts' },
+        h('h3', {}, 'Shortcuts'),
+        h('div', { class: 'sc-grid' },
+          h('div', {}, h('h4', {}, 'Canvas'), row(['drag'], 'pan (on the background)'), row(['scroll'], 'pan'), row(['Ctrl', 'scroll'], 'zoom'), row(['+', '−'], 'zoom in / out'), row(['F'], 'fit everything'), row(['Space', 'drag'], 'pan from anywhere')),
+          h('div', {}, h('h4', {}, 'Talk back to the agent'), row(['V'], 'select / pan'), row(['A'], 'arrow'), row(['O'], 'circle'), row(['H'], 'highlighter'), row(['N'], 'sticky note'), row(['Del'], 'delete the selected mark'), row(['Esc'], 'back to select'))),
+        h('p', { class: 'muted' }, 'Every mark is attached to the widget and the data points under it, so your agent can read it with read_canvas.'),
+        h('div', { class: 'row' }, h('button', { class: 'btn accent', onclick: () => shortcuts(false) }, 'Got it'))));
+    document.body.append(sheet);
+    sheet.querySelector('.btn.accent').focus({ preventScroll: true });
+  }
+  document.addEventListener('keydown', (e) => {
+    if (e.target.closest && e.target.closest('input, textarea, select, [contenteditable]')) return;
+    if (e.key === '?') { e.preventDefault(); shortcuts(); }
+    else if (e.key === 'Escape' && sheet) shortcuts(false);
+  });
+  window.__mcpScreenShortcuts = shortcuts;
+
   function confirmDialog({ title, body, ok, danger }) {
     return new Promise((resolve) => {
       const close = (v) => { bg.remove(); document.removeEventListener('keydown', key); resolve(v); };

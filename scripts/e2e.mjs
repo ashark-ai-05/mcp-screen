@@ -205,6 +205,11 @@ await call('place_widget', {
   },
 });
 await sleep(900);
+// record every node that lights up (glows fade, and hook processes are slow on a busy machine)
+await page.evaluate(() => {
+  window.__lit = new Set();
+  new MutationObserver(() => document.querySelectorAll('.node.edit, .node.read').forEach((n) => window.__lit.add(n.dataset.id || n.textContent))).observe(document.body, { subtree: true, attributes: true, attributeFilter: ['class'], childList: true });
+});
 const edits = [
   ['claude-a1b2c3', 'src/refresh.ts'], ['test-writer', 'public/app.js'], ['claude-a1b2c3', 'src/store.ts'],
   ['codex', 'src/wrap.ts'], ['test-writer', 'public/app.css'], ['claude-a1b2c3', 'docs/new-plugin.md'],
@@ -214,7 +219,7 @@ for (const [agent, f] of edits) {
   await sleep(450);
 }
 await sleep(300);
-const hot = await page.locator('.node.edit, .node.read').count();
+const hot = await page.evaluate(() => window.__lit.size);
 check('PostToolUse edits light up livemap nodes', hot >= 4, `${hot} glowing nodes`);
 const arch = await call('read_widget', { id: 'arch' });
 check('livemap reports unmapped files to the agent', arch.unmappedFiles?.includes('docs/new-plugin.md'));

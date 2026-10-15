@@ -40,8 +40,13 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: git config --global user.email ci@example.com && git config --global user.name ci
       - run: npm run screenshots
+      - run: node scripts/ux.mjs
+      - run: SOAK_CYCLES=10 node scripts/soak.mjs
+      - run: node scripts/perf.mjs --widgets 120 || echo '::warning::perf budget missed on the CI runner (informational; budgets are enforced locally)'
       - if: always()
         uses: actions/upload-artifact@v4
         with:
           name: e2e-screenshots
-          path: screenshots/*.png
+          path: |
+            screenshots/*.png
+            screenshots/ux/*.png

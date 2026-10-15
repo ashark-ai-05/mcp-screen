@@ -11,7 +11,10 @@
     "screenshots": "npm run build && node scripts/e2e.mjs",
     "prepublishOnly": "npm run build && npm test",
     "interop": "npm run build && node scripts/ext-apps-check.mjs",
-    "demo": "npm run build && node scripts/record-demo.mjs"
+    "demo": "npm run build && node scripts/record-demo.mjs",
+    "ux": "npm run build && node scripts/ux.mjs",
+    "soak": "npm run build && node scripts/soak.mjs",
+    "perf": "npm run build && node scripts/perf.mjs"
   },
   "keywords": [
     "mcp",
