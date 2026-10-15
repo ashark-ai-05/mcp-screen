@@ -212,6 +212,31 @@ export class CanvasStore {
     return a;
   }
 
+  /** A reply in the thread next to the mark. The agent answers questions; the human can follow up. */
+  replyAnnotation(id: string, text: string, from: 'agent' | 'human' = 'agent'): Annotation {
+    const a = this.annotations.get(id);
+    if (!a) throw new Error(`no annotation ${id}; read_canvas lists them`);
+    const t = typeof text === 'string' ? text.trim() : '';
+    if (!t) throw new Error('reply text is required');
+    a.replies = [...(a.replies ?? []), { text: t.slice(0, 4000), at: this.now().toISOString(), from }].slice(-50);
+    this.bus.push({ type: 'annotation', annotation: a });
+    return a;
+  }
+
+  /** Marks with a question the agent hasn't answered yet (or a human follow-up after its last answer). */
+  pendingQuestions(): Array<{ id: string; kind: string; question: string; target?: Annotation['target'] }> {
+    return this.listAnnotations()
+      .filter((a) => {
+        if (!a.text) return false;
+        const last = a.replies?.[a.replies.length - 1];
+        return !last || last.from === 'human';
+      })
+      .map((a) => {
+        const last = a.replies?.[a.replies.length - 1];
+        return { id: a.id, kind: a.kind, question: last ? last.text : a.text!, ...(a.target ? { target: a.target } : {}) };
+      });
+  }
+
   updateAnnotation(id: string, patch: { text?: string }): Annotation {
     const a = this.annotations.get(id);
     if (!a) throw new Error(`no annotation ${id}`);
@@ -448,11 +473,13 @@ export class CanvasStore {
   readCanvas(): {
     widgets: Array<Pick<Widget, 'id' | 'kind' | 'title' | 'status' | 'selection' | 'x' | 'y'> & { width: number; height: number }>;
     annotations: Annotation[];
+    pendingQuestions: ReturnType<CanvasStore['pendingQuestions']>;
     reports: number;
   } {
     return {
       widgets: this.list().map((w) => ({ id: w.id, kind: w.kind, title: w.title, status: w.status, selection: w.selection, x: w.x, y: w.y, ...sizeOf(w) })),
       annotations: this.listAnnotations(),
+      pendingQuestions: this.pendingQuestions(),
       reports: this.reports.length,
     };
   }

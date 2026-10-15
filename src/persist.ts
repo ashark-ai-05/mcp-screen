@@ -82,7 +82,8 @@ export async function restore(home: string, store: CanvasStore, api: ScreenApi):
   }
   for (const a of (Array.isArray(snap.annotations) ? snap.annotations : []).slice(0, 2000)) {
     try {
-      store.annotate({ kind: a.kind, points: a.points, text: a.text, color: a.color, dataPoints: a.target?.dataPoints });
+      const back = store.annotate({ kind: a.kind, points: a.points, text: a.text, color: a.color, dataPoints: a.target?.dataPoints });
+      for (const r of Array.isArray(a.replies) ? a.replies : []) if (r && typeof r.text === 'string') store.replyAnnotation(back.id, r.text, r.from === 'human' ? 'human' : 'agent');
       out.annotations++;
     } catch {
       out.skipped++;

@@ -202,6 +202,11 @@ export async function startHub(opts: HubOptions = {}): Promise<Hub> {
     if (req.method === 'POST' && p === '/api/annotations') return send(res, 200, { result: store.annotate(body as AnnotationInput) });
     const ann = /^\/api\/annotations\/([\w.-]+)$/.exec(p);
     if (ann && req.method === 'DELETE') return send(res, 200, { result: store.removeAnnotation(ann[1] as string) });
+    const rep = /^\/api\/annotations\/([\w.-]+)\/reply$/.exec(p);
+    if (rep && req.method === 'POST') {
+      const b = body as { text?: unknown; from?: unknown };
+      return send(res, 200, { result: store.replyAnnotation(rep[1] as string, typeof b.text === 'string' ? b.text : '', b.from === 'human' ? 'human' : 'agent') });
+    }
     if (ann && req.method === 'PATCH') return send(res, 200, { result: store.updateAnnotation(ann[1] as string, body as { text?: string }) });
     if (req.method === 'POST' && p === '/api/ask-form') {
       const ctrl = new AbortController();

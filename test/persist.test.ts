@@ -27,6 +27,7 @@ describe('canvas persistence', () => {
     s.place({ id: 'tl', kind: 'timeline', title: 't', data: { items: [] } });
     s.annotate({ kind: 'circle', points: [[100, 50], [200, 150]], text: 'why?', dataPoints: [{ label: 'b', value: 9 }] });
     void s.ask({ question: 'q?', choices: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }], timeoutMs: 60_000 } as never);
+    s.replyAnnotation(s.listAnnotations()[0]!.id, 'deploy at 09:02');
     s.move('chart', 40, 60);
     await hub.close();
     hub = null;
@@ -44,6 +45,7 @@ describe('canvas persistence', () => {
     expect(hub.store.get('log')!.data.lines).toEqual(['2', '3', '4', '5', '6', '7', '8', '9', '10', '11']);
     const ann = hub.store.listAnnotations();
     expect(ann).toHaveLength(1);
+    expect(ann[0]!.replies).toMatchObject([{ text: 'deploy at 09:02', from: 'agent' }]);
     expect(ann[0]).toMatchObject({ text: 'why?', target: { widgetId: 'chart', dataPoints: [{ label: 'b', value: 9 }] } });
   });
 

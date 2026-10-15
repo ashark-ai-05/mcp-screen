@@ -118,6 +118,14 @@ export interface Annotation {
   color: string;
   target?: AnnotationTarget;
   createdAt: string;
+  /** Agent replies, oldest first. An annotation with text and no reply is a pending question. */
+  replies?: AnnotationReply[];
+}
+
+export interface AnnotationReply {
+  text: string;
+  at: string;
+  from: 'agent' | 'human';
 }
 
 export type ScreenEvent =

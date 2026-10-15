@@ -81,3 +81,37 @@ describe('annotations', () => {
     expect(await del.json()).toEqual({ result: true });
   });
 });
+
+describe('annotation threads', () => {
+  it('a mark with text is a pending question until the agent replies; a human follow-up reopens it', () => {
+    const s = setup();
+    const q = s.annotate({ kind: 'circle', points: [[300, 60], [420, 200]], text: 'why?', dataPoints: [{ label: '10/09', value: 9 }] });
+    s.annotate({ kind: 'arrow', points: [[0, 0], [10, 10]] }); // no text: not a question
+    expect(s.pendingQuestions()).toEqual([{ id: q.id, kind: 'circle', question: 'why?', target: q.target }]);
+    s.replyAnnotation(q.id, '  Deploy at 09:02 slowed the coupon service.  ');
+    expect(s.pendingQuestions()).toEqual([]);
+    expect(s.listAnnotations().find((a) => a.id === q.id)!.replies).toEqual([{ text: 'Deploy at 09:02 slowed the coupon service.', at: expect.any(String), from: 'agent' }]);
+    s.replyAnnotation(q.id, 'is it fixed?', 'human');
+    expect(s.pendingQuestions()[0]).toMatchObject({ id: q.id, question: 'is it fixed?' });
+    expect(s.readCanvas().pendingQuestions).toHaveLength(1);
+    expect(() => s.replyAnnotation(q.id, '   ')).toThrow(/required/);
+    expect(() => s.replyAnnotation('nope', 'x')).toThrow(/no annotation/);
+  });
+
+  it('reply_annotation works through MCP against a running hub', async () => {
+    const hub = await startHub({ port: 0, home: null });
+    try {
+      hub.store.place({ id: 'ci', kind: 'chart', title: 'CI', data: { labels: ['a'], values: [1] }, x: 0, y: 0, w: 2, h: 2 });
+      const a = hub.store.annotate({ kind: 'note', points: [[20, 20]], text: 'what is this?' });
+      const remote = new RemoteApi(hub.url, hub.token);
+      const canvas = JSON.parse(((await callScreenTool(remote, 'read_canvas', {}))!.content[0] as { text: string }).text);
+      expect(canvas.pendingQuestions.map((p: { id: string }) => p.id)).toEqual([a.id]);
+      const r = await callScreenTool(remote, 'reply_annotation', { id: a.id, text: 'The CI failure chart.' });
+      expect(r!.isError).toBeFalsy();
+      expect(hub.store.pendingQuestions()).toEqual([]);
+      expect((await callScreenTool(remote, 'reply_annotation', { id: 'missing', text: 'x' }))!.isError).toBe(true);
+    } finally {
+      await hub.close();
+    }
+  });
+});

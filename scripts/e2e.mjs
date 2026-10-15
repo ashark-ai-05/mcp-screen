@@ -369,6 +369,20 @@ await sleep(500);
 await page.keyboard.press('v');
 const canvasNow = await call('read_canvas');
 check('read_canvas lists both annotations with their targets', canvasNow.annotations.length === 2 && canvasNow.annotations.some((a) => a.kind === 'note' && a.target?.widgetId === 'diff'), canvasNow.annotations.map((a) => `${a.kind}->${a.target?.widgetId}`).join(', '));
+// the agent answers in a thread next to the circle; the human follows up; it is pending again
+check('read_canvas lists both notes as pending questions', canvasNow.pendingQuestions.length === 2);
+await call('reply_annotation', { id: ann.id, text: '10/09: the coupon service deploy at 09:02 pushed p95 to 4.8 s, past the test’s 5 s wait.' });
+await page.locator(`.ann-label[data-ann="${ann.id}"] .reply.agent`).waitFor({ timeout: 5000 });
+check('the agent reply appears as a bubble next to the circle', /coupon service deploy/.test(await page.locator(`.ann-label[data-ann="${ann.id}"] .reply.agent`).innerText()));
+const follow = page.locator(`.ann-label[data-ann="${ann.id}"] .reply-in`);
+await follow.fill('is it fixed?');
+await follow.press('Enter');
+await sleep(500);
+const pend = (await call('read_canvas')).pendingQuestions;
+check('a human follow-up in the thread makes it pending again', pend.some((p) => p.id === ann.id && p.question === 'is it fixed?'));
+await call('reply_annotation', { id: ann.id, text: 'Yes: awaiting the coupon response; 50/50 runs green.' });
+await sleep(400);
+
 // showcase: keep the new kinds + the annotated chart, tidy, fit
 const keep = new Set(['ci-chart', 'plan', 'flow', 'diff', 'repro', 'tail', 'where', 'shot', 'incident']);
 for (const w of (await call('read_canvas')).widgets) if (!keep.has(w.id)) await call('remove_widget', { id: w.id });

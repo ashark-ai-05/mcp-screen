@@ -572,3 +572,18 @@ kbd { display: inline-block; min-width: 20px; padding: 1px 6px; margin: 0 2px; b
 .empty-w.err-w { color: #ffb3bf; background: rgba(255,107,129,.05); word-break: break-all; }
 .ew-x { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; border: 1.5px solid currentColor; font-size: 13px; }
 .card-body.more { -webkit-mask-image: linear-gradient(#000 calc(100% - 34px), transparent); mask-image: linear-gradient(#000 calc(100% - 34px), transparent); }
+/* ---------- annotation threads ---------- */
+.thread { margin-top: 6px; display: flex; flex-direction: column; gap: 5px; font-weight: 500; pointer-events: auto; cursor: auto; }
+.ann-label .thread { position: absolute; left: 0; top: calc(100% + 6px); width: max-content; max-width: 300px; margin: 0; }
+.reply { display: flex; gap: 7px; align-items: flex-start; padding: 7px 10px; border-radius: 4px 12px 12px 12px; font-size: 12.5px; line-height: 1.45; color: var(--text); background: rgba(18,21,33,.96); border: 1px solid rgba(142,166,255,.35); box-shadow: 0 12px 30px -10px rgba(0,0,0,.8); animation: land .5s var(--ease-spring) both; white-space: pre-wrap; text-align: left; }
+.reply.human { border-color: color-mix(in srgb, var(--c, #ffd166) 50%, transparent); }
+.reply .who { flex: none; font: 700 9.5px/16px Inter, sans-serif; letter-spacing: .06em; text-transform: uppercase; padding: 0 6px; border-radius: 5px; color: #0b0d14; background: linear-gradient(135deg, var(--accent), var(--accent-2)); }
+.reply.human .who { background: var(--c, #ffd166); }
+.reply.pending { color: var(--muted); border-style: dashed; font-size: 11.5px; padding: 5px 10px; }
+.dots { display: inline-flex; gap: 3px; align-items: center; height: 16px; }
+.dots i { width: 4px; height: 4px; border-radius: 50%; background: var(--accent); animation: dot 1.2s ease-in-out infinite; }
+.dots i:nth-child(2) { animation-delay: .15s; } .dots i:nth-child(3) { animation-delay: .3s; }
+@keyframes dot { 0%, 60%, 100% { opacity: .25; transform: none; } 30% { opacity: 1; transform: translateY(-2px); } }
+.reply-in { font: inherit; font-size: 12px; padding: 5px 9px; border-radius: 9px; border: 1px solid var(--line-2); background: rgba(10,12,20,.9); color: var(--text); outline: none; width: 200px; }
+.reply-in:focus { border-color: var(--accent); }
+.note .thread .reply { box-shadow: none; }

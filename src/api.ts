@@ -19,6 +19,7 @@ export interface ScreenApi {
   /** Blocks until the human submits the form, the timeout passes, or `signal` aborts. */
   askForm(input: FormInput): Promise<FormResult>;
   tidy(columns?: number): Promise<Array<{ id: string; x: number; y: number }>>;
+  replyAnnotation(id: string, text: string): Promise<unknown>;
   readonly url: string;
 }
 
@@ -65,6 +66,9 @@ export class LocalApi implements ScreenApi {
   }
   async askForm(input: FormInput): Promise<FormResult> {
     return this.store.askForm(input).result;
+  }
+  async replyAnnotation(id: string, text: string) {
+    return this.store.replyAnnotation(id, text, 'agent');
   }
   async tidy(columns?: number) {
     return this.store.tidy(columns);
@@ -114,6 +118,9 @@ export class RemoteApi implements ScreenApi {
   }
   undoClear() {
     return this.call<{ restored: number }>('POST', '/api/canvas/undo', {});
+  }
+  replyAnnotation(id: string, text: string) {
+    return this.call<unknown>('POST', `/api/annotations/${encodeURIComponent(id)}/reply`, { text, from: 'agent' });
   }
   tidy(columns?: number) {
     return this.call<Array<{ id: string; x: number; y: number }>>('POST', '/api/canvas/tidy', columns === undefined ? {} : { columns });

@@ -448,11 +448,32 @@
       const at = a.kind === 'arrow' ? a.points[0] : [Math.max(...xs) + 10, Math.min(...ys) - 6];
       return h('div', { class: 'ann-label', 'data-ann': a.id, style: { left: `${at[0]}px`, top: `${at[1]}px`, '--c': a.color } }, a.text);
     }
+    // the conversation under a mark: agent replies, a "waiting" state, and a follow-up box once answered
+    function thread(a) {
+      if (!a.text) return null;
+      const replies = a.replies || [];
+      const last = replies[replies.length - 1];
+      const waiting = !last || last.from === 'human';
+      const box = h('div', { class: `thread${waiting ? ' waiting' : ''}`, onpointerdown: (e) => e.stopPropagation(), ondblclick: (e) => e.stopPropagation() },
+        replies.map((r, i) => h('div', { class: `reply ${r.from}`, style: { animationDelay: `${i === replies.length - 1 ? 0 : 0}ms` } },
+          h('span', { class: 'who' }, r.from === 'agent' ? 'agent' : 'you'), h('span', { class: 'rt' }, r.text))),
+        waiting ? h('div', { class: 'reply pending' }, h('span', { class: 'dots' }, h('i'), h('i'), h('i')), h('span', {}, 'waiting for the agent')) : null);
+      if (!waiting) {
+        const input = h('input', { class: 'reply-in', placeholder: 'Follow up…', maxlength: 2000, 'aria-label': 'Follow up for the agent' });
+        input.addEventListener('keydown', (ev) => {
+          ev.stopPropagation();
+          if (ev.key === 'Enter' && input.value.trim()) { api('POST', `/api/annotations/${a.id}/reply`, { text: input.value.trim(), from: 'human' }); input.disabled = true; }
+        });
+        box.append(input);
+      }
+      return box;
+    }
+
     function renderAnnotations() {
       const seen = new Set();
       for (const a of state.annotations.values()) {
         seen.add(a.id);
-        const key = JSON.stringify([a.points, a.text, a.color, a.target && a.target.widgetId]);
+        const key = JSON.stringify([a.points, a.text, a.color, a.target && a.target.widgetId, a.replies]);
         const old = notes.get(a.id);
         if (old && old.dataset.key === key) continue;
         old && old.remove();
@@ -462,6 +483,7 @@
           el = h('div', { class: 'note', 'data-ann': a.id, style: { left: `${a.points[0][0]}px`, top: `${a.points[0][1]}px`, '--c': a.color }, ondblclick: () => editNote({ ...a, isNew: false }) },
             h('div', { class: 'note-text' }, a.text || ''),
             h('div', { class: 'note-foot' }, a.target ? `on “${a.target.title}”` : 'on the canvas'),
+            thread(a),
             h('button', { class: 'x', title: 'Delete note', onclick: (ev) => { ev.stopPropagation(); api('DELETE', `/api/annotations/${a.id}`); } }, '×'));
           noteLayer.append(el);
         } else {
@@ -469,6 +491,8 @@
           ink.append(el);
           const l = label(a);
           if (l) {
+            const t = thread(a);
+            if (t) l.append(t);
             l.append(h('button', { class: 'ann-x', title: 'Delete', onclick: (ev) => { ev.stopPropagation(); api('DELETE', `/api/annotations/${a.id}`); } }, '×'));
             noteLayer.append(l);
             el._label = l;
@@ -478,7 +502,9 @@
         notes.set(a.id, el);
       }
       for (const [id, el] of notes) if (!seen.has(id)) { el.classList.add('leaving'); el._label && el._label.remove(); setTimeout(() => el.remove(), 200); notes.delete(id); }
-      document.getElementById('count-notes').textContent = state.annotations.size ? `${state.annotations.size} note${state.annotations.size === 1 ? '' : 's'} for the agent` : '';
+      const n = state.annotations.size;
+      const open = [...state.annotations.values()].filter((a) => a.text && (!a.replies || !a.replies.length || a.replies[a.replies.length - 1].from === 'human')).length;
+      document.getElementById('count-notes').textContent = n ? `${n} note${n === 1 ? '' : 's'} for the agent${open ? ` · ${open} waiting` : ' · all answered'}` : '';
       drawMinimap();
     }
 
