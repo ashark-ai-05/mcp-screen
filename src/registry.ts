@@ -48,6 +48,28 @@ export const kindSchemas: Record<WidgetKind, z.ZodType<Record<string, unknown>>>
       toolResult: z.unknown().optional(),
     })
     .passthrough(),
+  question: z
+    .object({
+      question: z.string().min(1),
+      detail: z.string().optional(),
+      choices: z
+        .array(
+          z.object({
+            id: z.string().min(1),
+            label: z.string().min(1),
+            description: z.string().optional(),
+            /** Optional markdown preview rendered inside the card. */
+            preview: z.string().optional(),
+          }),
+        )
+        .min(2)
+        .max(8)
+        .refine((c) => new Set(c.map((x) => x.id)).size === c.length, 'choice ids must be unique'),
+      state: z.enum(['open', 'answered', 'timeout', 'cancelled']).default('open'),
+      answer: z.object({ id: z.string(), label: z.string(), at: z.string() }).optional(),
+      expiresAt: z.string().optional(),
+    })
+    .passthrough(),
   livemap: z
     .object({
       root: z.string().optional(),

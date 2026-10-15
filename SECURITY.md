@@ -36,6 +36,12 @@ A widget can carry a `source` (a command, URL or MCP tool) that the server re-ru
 - An agent that already has shell access on your machine can read `hub.json` and call the approve endpoint directly. The approval step protects against prompt-injected *MCP* usage, not against an agent that can already run arbitrary commands.
 - Refreshed commands inherit your full environment, including any secrets in env vars.
 
+## Questions, clearing and exports
+
+- `ask_user` only collects a click. Choice labels and previews are rendered as text. There is no MCP tool to answer a question, so an agent can't answer its own question through MCP. Every wait has a hard limit of 15 minutes.
+- `clear_canvas` keeps one undo snapshot in memory only. An open question is never put into the snapshot.
+- Exports happen entirely in your browser; nothing is uploaded. The HTML export removes all scripts, iframes and `on*` attributes and carries a `default-src 'none'` CSP, so the file can't run code or make requests. MCP App frames are replaced with a placeholder. **An export contains whatever is on the canvas.** Check it before you share it.
+
 ## Reporting
 
 Please report vulnerabilities privately through GitHub Security Advisories on the repository rather than in a public issue.

@@ -6,23 +6,39 @@
   <meta name="mcp-screen-token" content="__MCP_SCREEN_TOKEN__" />
   <title>mcp-screen</title>
   <link rel="icon" href="/favicon.svg" />
+  <link rel="preload" href="/fonts/inter-var-latin.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="stylesheet" href="/app.css" />
 </head>
 <body>
   <header class="top">
     <div class="brand"><span class="logo"></span>mcp-screen</div>
     <nav class="tabs" role="tablist">
-      <button class="tab active" data-tab="canvas">Canvas <span class="count" id="count-canvas"></span></button>
-      <button class="tab" data-tab="standup">Standup <span class="count" id="count-standup"></span></button>
-      <button class="tab" data-tab="livemap">Livemap <span class="count" id="count-livemap"></span></button>
+      <button class="tab active" data-tab="canvas">Canvas<span class="count" id="count-canvas"></span></button>
+      <button class="tab" data-tab="standup">Standup<span class="count" id="count-standup"></span></button>
+      <button class="tab" data-tab="livemap">Livemap<span class="count" id="count-livemap"></span></button>
     </nav>
-    <div class="conn" id="conn"><span class="dot"></span><span id="conn-text">connecting</span></div>
+    <div class="actions">
+      <div class="menu" id="share-menu">
+        <button class="btn" id="share-btn" title="Export this view">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 10V2M5 5l3-3 3 3M3 9v4h10V9"/></svg>Share
+        </button>
+        <div class="menu-pop">
+          <button id="export-png"><span>🖼</span><span>Download PNG<small>A crisp 2× image of this view</small></span></button>
+          <button id="export-html"><span>📄</span><span>Download HTML<small>One self-contained file, opens anywhere</small></span></button>
+        </div>
+      </div>
+      <button class="btn ghost" id="clear-btn" title="Clear the canvas">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M3 4h10M6 4V2.5h4V4M4.5 4l.7 9.5h5.6l.7-9.5"/></svg>Clear
+      </button>
+      <div class="conn" id="conn"><span class="dot"></span><span id="conn-text">connecting</span></div>
+    </div>
   </header>
   <main>
     <section id="view-canvas" class="view active"><div class="grid" id="grid"></div></section>
     <section id="view-standup" class="view"><div class="board" id="board"></div></section>
     <section id="view-livemap" class="view"><div class="livemap" id="livemap"></div></section>
   </main>
+  <script src="/export.js"></script>
   <script src="/app.js"></script>
 </body>
 </html>

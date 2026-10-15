@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import { RemoteApi } from './api.js';
 import { readHubInfo } from './hub.js';
 import { extractRisks, gitInfo, parseTranscript } from './standup.js';
-import type { FileEvent, Report } from './types.js';
+import type { FileAction, FileEvent, Report } from './types.js';
 import type { ReportInput } from './store.js';
 
 /** The subset of Claude Code hook stdin we use. */
@@ -21,7 +21,7 @@ export interface HookPayload {
   tool_input?: { file_path?: string; notebook_path?: string; path?: string };
 }
 
-const FILE_TOOLS = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit']);
+const FILE_TOOLS: Record<string, FileAction> = { Read: 'read', Write: 'create', Edit: 'edit', MultiEdit: 'edit', NotebookEdit: 'edit' };
 
 export function agentName(p: HookPayload): string {
   const short = (p.session_id ?? '').slice(0, 6);
@@ -36,9 +36,12 @@ export function buildFromHook(p: HookPayload): { report?: ReportInput; fileEvent
   const cwd = p.cwd ?? process.cwd();
   if (event === 'PostToolUse') {
     const file = p.tool_input?.file_path ?? p.tool_input?.notebook_path;
-    if (!file || (p.tool_name && !FILE_TOOLS.has(p.tool_name))) return {};
+    if (!file || (p.tool_name && !(p.tool_name in FILE_TOOLS))) return {};
     const fe: FileEvent = { path: file, cwd, agent: agentName(p) };
-    if (p.tool_name) fe.tool = p.tool_name;
+    if (p.tool_name) {
+      fe.tool = p.tool_name;
+      fe.action = FILE_TOOLS[p.tool_name] ?? 'edit';
+    }
     return { fileEvent: fe };
   }
   if (event === 'Stop' || event === 'SubagentStop') {
@@ -97,7 +100,7 @@ export function hooksSnippet(command = 'npx -y mcp-screen hook') {
     hooks: {
       Stop: [{ hooks: [{ type: 'command', command, timeout: 15 }] }],
       SubagentStop: [{ hooks: [{ type: 'command', command, timeout: 15 }] }],
-      PostToolUse: [{ matcher: 'Write|Edit|MultiEdit|NotebookEdit', hooks: [{ type: 'command', command, timeout: 5 }] }],
+      PostToolUse: [{ matcher: 'Read|Write|Edit|MultiEdit|NotebookEdit', hooks: [{ type: 'command', command, timeout: 5 }] }],
     },
   };
 }
@@ -107,7 +110,7 @@ export const HOOKS_SNIPPET = {
     Stop: [{ hooks: [{ type: 'command', command: 'npx -y mcp-screen hook', timeout: 15 }] }],
     SubagentStop: [{ hooks: [{ type: 'command', command: 'npx -y mcp-screen hook', timeout: 15 }] }],
     PostToolUse: [
-      { matcher: 'Write|Edit|MultiEdit|NotebookEdit', hooks: [{ type: 'command', command: 'npx -y mcp-screen hook', timeout: 5 }] },
+      { matcher: 'Read|Write|Edit|MultiEdit|NotebookEdit', hooks: [{ type: 'command', command: 'npx -y mcp-screen hook', timeout: 5 }] },
     ],
   },
 };
@@ -117,9 +120,12 @@ export function mergeHooks(settings: Record<string, unknown>, snippet = HOOKS_SN
   const out = { ...settings };
   const hooks = { ...((out.hooks as Record<string, unknown[]>) ?? {}) };
   for (const [event, entries] of Object.entries(snippet.hooks)) {
-    const existing = (hooks[event] ?? []) as Array<{ hooks?: Array<{ command?: string }> }>;
-    const has = existing.some((e) => e.hooks?.some((h) => h.command?.includes('mcp-screen hook')));
-    hooks[event] = has ? existing : [...existing, ...entries];
+    const existing = (hooks[event] ?? []) as Array<{ matcher?: string; hooks?: Array<{ command?: string }> }>;
+    const ours = (e: { hooks?: Array<{ command?: string }> }) => e.hooks?.some((h) => h.command?.includes('mcp-screen hook'));
+    const has = existing.some(ours);
+    // Upgrade older installs in place (e.g. PostToolUse gaining Read for the livemap theatre).
+    const wanted = (entries[0] as { matcher?: string } | undefined)?.matcher;
+    hooks[event] = has ? existing.map((e) => (ours(e) && wanted ? { ...e, matcher: wanted } : e)) : [...existing, ...entries];
   }
   out.hooks = hooks;
   return out;

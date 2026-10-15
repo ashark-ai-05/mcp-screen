@@ -4,7 +4,7 @@
   'use strict';
   const TOKEN = document.querySelector('meta[name="mcp-screen-token"]').content;
   const SVGNS = 'http://www.w3.org/2000/svg';
-  const state = { widgets: new Map(), reports: [], activity: [], hot: new Map(), tableSort: new Map(), tab: 'canvas' };
+  const state = { widgets: new Map(), reports: [], activity: [], tableSort: new Map(), tab: 'canvas' };
   const frames = new Map(); // widgetId -> { iframe, ready }
 
   // ---------- helpers ----------
@@ -178,7 +178,37 @@
     return f.iframe;
   }
 
+  function renderQuestion(w) {
+    const d = w.data;
+    const open = d.state === 'open';
+    const answer = d.answer && d.answer.id;
+    const choices = h('div', { class: `choices${open ? '' : ' closed'}` }, d.choices.map((c, i) =>
+      h('button', {
+        class: `choice${answer === c.id ? ' chosen' : answer ? ' dim' : ''}`, 'data-choice': c.id,
+        onclick: open ? () => api('POST', `/api/widgets/${encodeURIComponent(w.id)}/answer`, { choice: c.id }) : null,
+      },
+        h('span', { class: 'k' }, answer === c.id ? '✓' : String(i + 1)),
+        h('span', { class: 'lbl' }, c.label),
+        c.description ? h('span', { class: 'desc' }, c.description) : null,
+        c.preview ? h('div', { class: 'prev' }, markdown(c.preview)) : null)));
+    const STATE = { answered: `Answered · sent “${d.answer ? d.answer.label : ''}” back to the agent`, timeout: 'Timed out · the agent moved on', cancelled: 'Cancelled by the agent' };
+    let timer = null;
+    if (open && d.expiresAt) {
+      const total = Date.parse(d.expiresAt) - Date.parse(w.createdAt);
+      const left = Math.max(0, Date.parse(d.expiresAt) - Date.now());
+      const bar = h('i', { style: { transform: `scaleX(${total > 0 ? left / total : 0})`, transition: `transform ${left}ms linear` } });
+      requestAnimationFrame(() => requestAnimationFrame(() => { bar.style.transform = 'scaleX(0)'; }));
+      timer = h('div', { class: 'q-timer' }, bar);
+    }
+    return h('div', { class: 'q' },
+      h('div', { class: 'q-text' }, d.question),
+      d.detail ? h('p', { class: 'q-detail' }, d.detail) : null,
+      choices,
+      h('div', { class: 'q-foot' }, open ? h('span', {}, 'The agent is waiting for your click') : h('span', { class: `q-state ${d.state}` }, STATE[d.state] || d.state), timer));
+  }
+
   const RENDER = {
+    question: renderQuestion,
     markdown: (w) => markdown(w.data.markdown),
     text: (w) => h('pre', { class: 'text' }, w.data.text),
     table: renderTable,
@@ -209,12 +239,12 @@
       body.append(h('div', { class: 'err' }, `render failed: ${e.message}`));
     }
     const el = h('article', {
-      class: `card${w.kind === 'mcp-app' ? ' app' : ''}`, 'data-id': w.id,
+      class: `card${w.kind === 'mcp-app' ? ' app' : ''}${w.kind === 'question' ? ` question ${w.data.state}` : ''}`, 'data-id': w.id,
       style: { gridColumn: `span ${w.w}`, gridRow: `span ${w.status === 'needs-approval' ? Math.max(w.h, 2) : w.h}` },
     },
       h('div', { class: 'card-head' },
         h('span', { class: 'card-title', title: w.title }, w.title),
-        h('span', { class: 'kind' }, w.kind === 'mcp-app' ? 'MCP App' : w.kind),
+        h('span', { class: 'kind' }, w.kind === 'mcp-app' ? 'MCP App' : w.kind === 'question' ? 'ask_user' : w.kind),
         STATUS_LABEL[w.status] ? h('span', { class: `pill ${w.status}` }, STATUS_LABEL[w.status]) : null),
       body);
     if (w.source && w.status !== 'needs-approval') {
@@ -239,12 +269,19 @@
     // loses the MCP App's state); visual order comes from CSS `order` instead.
     const existing = new Map([...grid.querySelectorAll('.card')].map((c) => [c.dataset.id, c]));
     grid.querySelector('.empty')?.remove();
-    for (const [id, c] of existing) if (!state.widgets.has(id)) { c.remove(); frames.delete(id); }
+    for (const [id, c] of existing) if (!state.widgets.has(id)) {
+      frames.delete(id);
+      if (c.classList.contains('leaving')) continue;
+      c.classList.add('leaving');
+      setTimeout(() => c.remove(), 280);
+    }
+    let fresh = 0;
+    document.getElementById('clear-btn').disabled = !widgets.length;
     if (!widgets.length) {
       grid.append(h('div', { class: 'empty' },
         h('h2', {}, 'Your agent’s screen is ready'),
         h('p', {}, 'Ask your agent to show you something, e.g. ', h('code', {}, '“chart our last 30 days of CI failures on the screen”')),
-        h('p', {}, 'Tools: place_widget · update_widget · read_widget · read_canvas · post_report')));
+        h('p', {}, 'Tools: place_widget · ask_user · update_widget · read_widget · read_canvas · clear_canvas · post_report')));
       return;
     }
     widgets.forEach((w, i) => {
@@ -252,7 +289,7 @@
       if (!c || (c.dataset.v !== w.updatedAt && w.kind !== 'mcp-app')) {
         const next = card(w);
         next.dataset.v = w.updatedAt;
-        if (c) { next.style.animation = 'none'; c.replaceWith(next); } else grid.append(next);
+        if (c) { next.style.animation = 'none'; c.replaceWith(next); } else { next.style.setProperty('--delay', `${Math.min(fresh++, 6) * 70}ms`); grid.append(next); }
         c = next;
       }
       c.style.order = String(i);
@@ -317,56 +354,190 @@
       r.risks && r.risks.length ? h('ul', { class: 'risks' }, r.risks.map((x) => h('li', {}, x))) : null);
   }
 
+  // ---------- livemap + agent theatre ----------
+  // Static layer (edges + nodes) is rebuilt only when the map changes. Agents are glowing orbs
+  // that glide to whichever module they touch; each file flies in as a chip and lands with a ripple.
   const lm = document.getElementById('livemap');
-  const HOT_MS = 7000;
-  function renderLivemap() {
+  const HOT_MS = 6500;
+  const NODE_W = 176, NODE_H = 62;
+  const theatre = { mapId: null, mapVersion: null, stage: null, svg: null, nodes: new Map(), orbs: new Map(), counts: new Map(), recent: new Map(), focus: false, captionTimer: 0 };
+  const ACT_LABEL = { read: 'READ', edit: 'EDIT', create: 'NEW' };
+  const VERB = { read: 'is reading', edit: 'is editing', create: 'created' };
+  const PAD = 40;
+
+  function currentMap() {
     const maps = [...state.widgets.values()].filter((w) => w.kind === 'livemap');
-    document.getElementById('count-livemap').textContent = maps.length ? String(maps.length) : '';
-    lm.replaceChildren();
-    const w = maps[maps.length - 1];
+    return maps[maps.length - 1];
+  }
+
+  function renderLivemap() {
+    const w = currentMap();
+    document.getElementById('count-livemap').textContent = [...state.widgets.values()].filter((x) => x.kind === 'livemap').length || '';
     if (!w) {
-      lm.append(h('div', { class: 'empty', style: { gridColumn: '1 / -1', minHeight: '420px' } },
+      theatre.mapId = null;
+      lm.replaceChildren(h('div', { class: 'empty', style: { gridColumn: '1 / -1', minHeight: '440px' } },
         h('h2', {}, 'No architecture map yet'),
         h('p', {}, 'Ask your agent: ', h('code', {}, '“draw a livemap of this repo with place_widget”')),
-        h('p', {}, 'Each box maps to file globs; edits from the PostToolUse hook light it up.')));
+        h('p', {}, 'Each box maps to file globs. With the hooks installed, every file the agent reads or edits flies onto its box.')));
       return;
     }
-    const { nodes, edges, layout, width, height } = w.data;
-    const NW = 168, NH = 58;
-    const svg = s('svg', { class: 'map', width: Math.max(width, 400) + 40, height: height + 30, viewBox: `-20 0 ${Math.max(width, 400) + 40} ${height + 30}` },
-      s('defs', {}, s('marker', { id: 'arrow', viewBox: '0 0 10 10', refX: 9, refY: 5, markerWidth: 7, markerHeight: 7, orient: 'auto-start-reverse' }, s('path', { d: 'M0,0 L10,5 L0,10 z', fill: '#4a5272' }))));
+    if (theatre.mapId !== w.id || theatre.mapVersion !== JSON.stringify([w.data.nodes, w.data.edges, w.title])) buildStage(w);
+    renderSide(w);
+  }
+
+  function buildStage(w) {
+    theatre.mapId = w.id;
+    theatre.mapVersion = JSON.stringify([w.data.nodes, w.data.edges, w.title]);
+    theatre.nodes.clear();
+    theatre.orbs.clear();
+    const { nodes, edges, layout } = w.data;
+    const width = Math.max(w.data.width, 520) + PAD * 2;
+    const height = w.data.height + PAD * 2 + 30;
+    const stage = h('div', { class: 'stage', style: { width: `${width}px`, height: `${height}px` } });
+    const svg = s('svg', { class: 'map', width, height, viewBox: `0 0 ${width} ${height}` },
+      s('defs', {}, s('marker', { id: 'arrow', viewBox: '0 0 10 10', refX: 9, refY: 5, markerWidth: 6, markerHeight: 6, orient: 'auto-start-reverse' }, s('path', { d: 'M0,0 L10,5 L0,10 z', fill: 'rgba(160,170,210,.35)' }))));
+    const pos = (id) => layout[id] && { x: layout[id].x + PAD, y: layout[id].y + PAD };
     for (const e of edges) {
-      const a = layout[e.from], b = layout[e.to];
+      const a = pos(e.from), b = pos(e.to);
       if (!a || !b) continue;
-      const y1 = a.y + NH / 2, y2 = b.y - NH / 2 - 2, my = (y1 + y2) / 2;
-      svg.append(s('path', { class: 'edge', d: `M${a.x},${y1} C${a.x},${my} ${b.x},${my} ${b.x},${y2}`, 'marker-end': 'url(#arrow)' }));
+      const y1 = a.y + NODE_H / 2, y2 = b.y - NODE_H / 2 - 3, my = (y1 + y2) / 2;
+      svg.append(s('path', { class: 'edge', 'data-from': e.from, 'data-to': e.to, d: `M${a.x},${y1} C${a.x},${my} ${b.x},${my} ${b.x},${y2}`, 'marker-end': 'url(#arrow)' }));
       if (e.label) svg.append(s('text', { class: 'edge-l', x: (a.x + b.x) / 2 + 6, y: my }, e.label));
     }
-    const now = Date.now();
-    for (const n of nodes) {
-      const p = layout[n.id];
-      if (!p) continue;
-      const hot = (state.hot.get(`${w.id}:${n.id}`) || []).filter((x) => now - x.t < HOT_MS);
-      const g = s('g', { class: `node${hot.length ? ' hot' : ''}`, transform: `translate(${p.x - NW / 2},${p.y - NH / 2})`, style: hot.length ? `--glow:${hot[hot.length - 1].color}` : '' },
-        s('title', {}, `${n.label}\n${n.globs.join('\n')}${n.description ? `\n\n${n.description}` : ''}`),
-        s('rect', { width: NW, height: NH }),
-        s('text', { class: 'lbl', x: 14, y: 24 }, n.label),
-        s('text', { class: 'gl', x: 14, y: 42 }, ((g) => (g.length > 25 ? `${g.slice(0, 24)}…` : g))(n.globs.join(', '))));
-      const agents = [...new Set(hot.map((x) => x.agent))];
-      agents.forEach((a, i) => g.append(s('circle', { cx: NW - 14 - i * 12, cy: 14, r: 4.5, fill: agentColor(a) })));
-      svg.append(g);
-    }
-    const acts = state.activity.filter((a) => a.widgetId === w.id).slice(-30).reverse();
+    stage.append(svg);
+    nodes.forEach((n, i) => {
+      const p = pos(n.id);
+      if (!p) return;
+      const el = h('div', { class: 'node', title: `${n.label}\n${n.globs.join('\n')}${n.description ? `\n\n${n.description}` : ''}`, style: { left: `${p.x}px`, top: `${p.y}px`, animationDelay: `${i * 45}ms` } },
+        h('div', { class: 'lbl' }, n.label),
+        h('div', { class: 'gl' }, n.globs.join(', ')),
+        h('span', { class: 'n' }, String(theatre.counts.get(`${w.id}:${n.id}`) || 0)),
+        h('div', { class: 'files-mini' }));
+      theatre.nodes.set(n.id, { el, x: p.x, y: p.y, label: n.label });
+      stage.append(el);
+    });
+    const caption = h('div', { class: 'caption idle' });
+    theatre.stage = stage;
+    theatre.svg = svg;
+    theatre.caption = caption;
+    const wrap = h('div', { class: 'map-wrap' },
+      h('div', { class: 'map-title' }, h('h3', {}, w.title), h('span', { class: 'kind' }, `${nodes.length} modules`),
+        w.data.root ? h('span', { class: 'mono', style: { color: 'var(--muted)', fontSize: '12px' } }, w.data.root) : null,
+        h('button', { class: 'btn ghost', onclick: () => { theatre.focus = !theatre.focus; lm.classList.toggle('focus', theatre.focus); } }, theatre.focus ? 'Show panel' : 'Theatre mode')),
+      stage, caption);
+    const side = h('div', { class: 'side' });
+    theatre.side = side;
+    lm.classList.toggle('focus', theatre.focus);
+    lm.replaceChildren(wrap, side);
+    // replay heat that is still warm
+    for (const a of state.activity.filter((x) => x.widgetId === w.id && Date.now() - Date.parse(x.at) < HOT_MS)) heat(a);
+  }
+
+  function renderSide(w) {
+    if (!theatre.side) return;
+    const acts = state.activity.filter((a) => a.widgetId === w.id).slice(-40).reverse();
     const agents = [...new Set(acts.map((a) => a.agent))];
     const unmapped = w.unmappedFiles || [];
-    lm.append(
-      h('div', { class: 'map-wrap' }, h('div', { class: 'map-title' }, h('h3', {}, w.title), h('span', { class: 'kind' }, `${nodes.length} modules`), w.data.root ? h('span', { class: 'br mono', style: { color: 'var(--muted)', fontSize: '12px' } }, w.data.root) : null), svg),
-      h('div', { class: 'side' },
-        h('div', { class: 'panel' }, h('h4', {}, 'Agents'), agents.length ? h('div', { style: { display: 'flex', gap: '6px', flexWrap: 'wrap' } }, agents.map(chip)) : h('div', { class: 'unmapped', style: { color: 'var(--muted)' } }, 'Waiting for file edits…')),
-        h('div', { class: 'panel' }, h('h4', {}, 'Live edits'), h('ul', { class: 'feed' }, acts.map((a) => h('li', {},
-          h('span', { class: 'who' }, chip(a.agent), h('span', { style: { color: 'var(--muted)' } }, `→ ${a.nodeIds.map((id) => (nodes.find((n) => n.id === id) || {}).label || id).join(', ')}`), h('span', { style: { marginLeft: 'auto', color: 'var(--muted)' } }, ago(a.at))),
-          h('span', { class: 'path' }, a.path))))),
-        unmapped.length ? h('div', { class: 'panel' }, h('h4', {}, 'Outside the map'), h('div', { class: 'unmapped' }, `${unmapped.length} edited file${unmapped.length > 1 ? 's' : ''} match no box. Ask the agent to refresh the livemap.`, unmapped.slice(-6).map((u) => h('code', {}, u)))) : null));
+    const label = (id) => (theatre.nodes.get(id) || {}).label || id;
+    theatre.side.replaceChildren(
+      h('div', { class: 'panel' }, h('h4', {}, 'Agents on stage'), agents.length ? h('div', { style: { display: 'flex', gap: '6px', flexWrap: 'wrap' } }, agents.map(chip)) : h('div', { class: 'unmapped', style: { color: 'var(--muted)' } }, 'Waiting for the first file…')),
+      h('div', { class: 'panel' }, h('h4', {}, 'Live activity'), h('ul', { class: 'feed' }, acts.map((a) => h('li', {},
+        h('span', { class: 'who' }, chip(a.agent), h('span', { class: `act ${a.action || 'edit'}` }, ACT_LABEL[a.action || 'edit']), h('span', { style: { color: 'var(--muted)' } }, `→ ${a.nodeIds.map(label).join(', ')}`), h('span', { class: 'ago', 'data-iso': a.at, style: { marginLeft: 'auto', color: 'var(--muted)' } }, ago(a.at))),
+        h('span', { class: 'path' }, a.path))))),
+      ...(unmapped.length ? [h('div', { class: 'panel' }, h('h4', {}, 'Outside the map'), h('div', { class: 'unmapped' }, `${unmapped.length} file${unmapped.length > 1 ? 's' : ''} match no box. Ask the agent to refresh the livemap.`, unmapped.slice(-6).map((u) => h('code', {}, u))))] : []));
+  }
+
+  /** Persistent glow + counter + mini file list on a node. */
+  function heat(a) {
+    const action = a.action || 'edit';
+    for (const id of a.nodeIds) {
+      const n = theatre.nodes.get(id);
+      if (!n) continue;
+      const key = `${a.widgetId}:${id}`;
+      n.el.style.setProperty('--glow', a.color);
+      n.el.classList.remove('read', 'edit');
+      void n.el.offsetWidth;
+      n.el.classList.add(action === 'read' ? 'read' : 'edit');
+      n.el.querySelector('.n').textContent = String(theatre.counts.get(key) || 0);
+      const recent = theatre.recent.get(key) || [];
+      n.el.querySelector('.files-mini').replaceChildren(...recent.slice(0, 3).map((p) => h('span', {}, p)));
+      clearTimeout(n.cool);
+      n.cool = setTimeout(() => n.el.classList.remove('read', 'edit'), HOT_MS);
+    }
+  }
+
+  /** The show: orb glides to the module, the file chip flies in and lands with a ripple. */
+  function perform(a) {
+    const action = a.action || 'edit';
+    for (const id of a.nodeIds) {
+      const key = `${a.widgetId}:${id}`;
+      theatre.counts.set(key, (theatre.counts.get(key) || 0) + 1);
+      const base = a.path.split('/').pop();
+      theatre.recent.set(key, [base, ...(theatre.recent.get(key) || []).filter((x) => x !== base)].slice(0, 3));
+    }
+    if (a.replay || a.widgetId !== theatre.mapId || !theatre.stage) return;
+    const target = theatre.nodes.get(a.nodeIds[0]);
+    if (!target) return;
+    const stage = theatre.stage;
+
+    // agent orb
+    let orb = theatre.orbs.get(a.agent);
+    const from = orb ? { x: orb.x, y: orb.y, node: orb.node } : { x: target.x, y: -10, node: null };
+    if (!orb) {
+      const el = h('div', { class: 'orb', 'data-name': a.agent, style: { '--c': a.color, left: `${from.x}px`, top: `${from.y}px` } }, a.agent.slice(0, 1).toUpperCase());
+      el.style.setProperty('--c', a.color);
+      stage.append(el);
+      orb = { el, x: from.x, y: from.y, node: null };
+      theatre.orbs.set(a.agent, orb);
+    }
+    const slot = [...theatre.orbs.keys()].indexOf(a.agent);
+    const sameNode = [...theatre.orbs.entries()].filter(([name, o]) => name !== a.agent && o.node === a.nodeIds[0]).length;
+    const ox = target.x - NODE_W / 2 - 18, oy = target.y - 12 + sameNode * 26;
+    void slot;
+    requestAnimationFrame(() => {
+      orb.el.style.left = `${ox}px`;
+      orb.el.style.top = `${oy}px`;
+    });
+    orb.el.classList.add('busy');
+    clearTimeout(orb.idle);
+    orb.idle = setTimeout(() => orb.el.classList.remove('busy'), 2500);
+
+    // light the edge it travels along
+    if (from.node && from.node !== a.nodeIds[0]) {
+      const path = theatre.svg.querySelector(`.edge[data-from="${CSS.escape(from.node)}"][data-to="${CSS.escape(a.nodeIds[0])}"], .edge[data-from="${CSS.escape(a.nodeIds[0])}"][data-to="${CSS.escape(from.node)}"]`);
+      if (path) {
+        path.style.setProperty('--flow', a.color);
+        path.classList.add('flow');
+        setTimeout(() => path.classList.remove('flow'), 1400);
+      }
+    }
+    orb.x = ox; orb.y = oy; orb.node = a.nodeIds[0];
+
+    // flying file chip
+    const flyer = h('div', { class: 'flyer', style: { left: `${from.x}px`, top: `${from.y}px` } }, h('i', {}, ACT_LABEL[action]), a.path.split('/').slice(-2).join('/'));
+    flyer.style.setProperty('--c', a.color);
+    stage.append(flyer);
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      flyer.style.left = `${target.x}px`;
+      flyer.style.top = `${target.y}px`;
+    }));
+    setTimeout(() => {
+      flyer.classList.add('landed');
+      const ripple = h('div', { class: 'ripple', style: { left: `${target.x}px`, top: `${target.y}px` } });
+      ripple.style.setProperty('--glow', a.color);
+      stage.append(ripple);
+      setTimeout(() => ripple.remove(), 1000);
+      heat(a);
+      setTimeout(() => flyer.remove(), 400);
+    }, 820);
+
+    // caption
+    const cap = theatre.caption;
+    cap.style.setProperty('--c', a.color);
+    cap.replaceChildren(chip(a.agent), h('span', { class: 'verb' }, VERB[action]), h('code', {}, a.path), h('span', { class: 'arrow' }, '→'), h('strong', {}, target.label));
+    cap.classList.remove('idle');
+    clearTimeout(theatre.captionTimer);
+    theatre.captionTimer = setTimeout(() => cap.classList.add('idle'), 3200);
   }
 
   function renderAll() {
@@ -462,7 +633,7 @@
       state.widgets = new Map(snap.widgets.map((w) => [w.id, w]));
       state.reports = snap.reports;
       state.activity = snap.activity;
-      for (const a of snap.activity) markHot(a);
+      for (const a of snap.activity) perform({ ...a, replay: true });
       renderAll();
     });
     es.onopen = () => { conn.classList.add('on'); connText.textContent = `live · ${location.host}`; };
@@ -492,21 +663,66 @@
         renderStandup();
       } else if (ev.type === 'activity') {
         state.activity.push(ev.activity);
-        markHot(ev.activity);
-        renderLivemap();
+        if (state.activity.length > 300) state.activity.shift();
+        perform(ev.activity);
+        const w = currentMap();
+        if (w) renderSide(w);
+      } else if (ev.type === 'cleared') {
+        toast(`Cleared ${ev.count} widget${ev.count === 1 ? '' : 's'}`, ev.undoable ? { label: 'Undo', run: () => api('POST', '/api/canvas/undo') } : null);
+      } else if (ev.type === 'restored') {
+        toast(`Restored ${ev.count} widget${ev.count === 1 ? '' : 's'}`);
       }
     };
   }
-  function markHot(a) {
-    const t = Date.parse(a.at) || Date.now();
-    for (const n of a.nodeIds) {
-      const key = `${a.widgetId}:${n}`;
-      state.hot.set(key, [...(state.hot.get(key) || []), { t, color: a.color, agent: a.agent }].slice(-6));
-    }
-    setTimeout(renderLivemap, HOT_MS + 50);
+  // ---------- header actions: clear (confirm + undo), share ----------
+  let toastEl = null;
+  function toast(text, action, ms = 8000) {
+    toastEl?.remove();
+    const el = h('div', { class: 'toast', role: 'status' }, h('span', {}, text),
+      action ? h('button', { class: 'btn accent', onclick: () => { action.run(); el.remove(); } }, action.label) : null,
+      h('span', { class: 'bar', style: { animationDuration: `${ms}ms` } }));
+    document.body.append(el);
+    toastEl = el;
+    setTimeout(() => el.remove(), ms);
   }
+  function confirmDialog({ title, body, ok, danger }) {
+    return new Promise((resolve) => {
+      const close = (v) => { bg.remove(); document.removeEventListener('keydown', key); resolve(v); };
+      const key = (e) => { if (e.key === 'Escape') close(false); if (e.key === 'Enter') close(true); };
+      const bg = h('div', { class: 'modal-bg', onclick: (e) => { if (e.target === bg) close(false); } },
+        h('div', { class: 'modal', role: 'dialog', 'aria-modal': 'true' }, h('h3', {}, title), h('p', {}, body),
+          h('div', { class: 'row' }, h('button', { class: 'btn ghost', onclick: () => close(false) }, 'Cancel'),
+            h('button', { class: `btn ${danger ? 'danger' : 'accent'}`, 'data-ok': '1', onclick: () => close(true) }, ok))));
+      document.body.append(bg);
+      document.addEventListener('keydown', key);
+      bg.querySelector('[data-ok]').focus();
+    });
+  }
+  document.getElementById('clear-btn').addEventListener('click', async () => {
+    const n = state.widgets.size;
+    if (!n) return;
+    if (await confirmDialog({ title: `Clear ${n} widget${n === 1 ? '' : 's'}?`, body: 'Everything on the canvas goes away, including the livemap. Standup cards stay. You can undo right after.', ok: 'Clear canvas', danger: true }))
+      await api('POST', '/api/canvas/clear', {});
+  });
+  const shareMenu = document.getElementById('share-menu');
+  document.getElementById('share-btn').addEventListener('click', (e) => { e.stopPropagation(); shareMenu.classList.toggle('open'); });
+  document.addEventListener('click', () => shareMenu.classList.remove('open'));
+  async function doExport(kind) {
+    shareMenu.classList.remove('open');
+    try {
+      const blob = kind === 'png' ? await window.McpScreenExport.exportPng() : await window.McpScreenExport.exportHtml();
+      toast(`${kind.toUpperCase()} saved · ${(blob.size / 1024).toFixed(0)} KB`, null, 3500);
+    } catch (e) {
+      toast(`Export failed: ${e.message}`, null, 5000);
+    }
+  }
+  document.getElementById('export-png').addEventListener('click', () => doExport('png'));
+  document.getElementById('export-html').addEventListener('click', () => doExport('html'));
+  window.__mcpScreen = { doExport };
+
   setInterval(() => {
-    for (const el of document.querySelectorAll('.ago[data-iso]')) if (el.dataset.iso) el.textContent = `· ${ago(el.dataset.iso)}`;
+    for (const el of document.querySelectorAll('.card-foot .ago[data-iso]')) if (el.dataset.iso) el.textContent = `· ${ago(el.dataset.iso)}`;
+    for (const el of document.querySelectorAll('.feed .ago[data-iso]')) el.textContent = ago(el.dataset.iso);
   }, 1000);
   connect();
 })();

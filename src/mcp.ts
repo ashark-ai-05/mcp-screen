@@ -10,6 +10,9 @@ import type { ScreenApi } from './api.js';
 import { KIND_DOCS, WIDGET_KINDS } from './registry.js';
 import { VERSION } from './hub.js';
 
+/** Kinds an agent may place directly. mcp-app comes from `wrap`; question comes from ask_user. */
+const PLACEABLE = WIDGET_KINDS.filter((k) => k !== 'mcp-app' && k !== 'question');
+
 const sourceJson = {
   type: 'object',
   description:
@@ -36,7 +39,7 @@ export const SCREEN_TOOLS: Tool[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        kind: { type: 'string', enum: WIDGET_KINDS.filter((k) => k !== 'mcp-app') },
+        kind: { type: 'string', enum: PLACEABLE },
         title: { type: 'string' },
         data: { type: 'object', description: 'Payload matching the kind (see description).' },
         id: { type: 'string', description: 'Optional stable id, e.g. "ci-failures".' },
@@ -81,6 +84,41 @@ export const SCREEN_TOOLS: Tool[] = [
     inputSchema: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
   },
   {
+    name: 'clear_canvas',
+    description: 'Remove every widget from the canvas (standup cards stay). The human can undo it from the canvas, or you can call clear_canvas with undo:true right after.',
+    inputSchema: { type: 'object', properties: { undo: { type: 'boolean', description: 'Restore the widgets removed by the last clear.' } } },
+  },
+  {
+    name: 'ask_user',
+    description:
+      'Ask the human a visual question: places clickable choice cards on the canvas and BLOCKS until they click one (or the timeout passes). ' +
+      'Use it for decisions that are easier to make by looking: layouts, copy options, which bug to fix first. Returns {answered, choice:{id,label}} or {answered:false, reason}.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        question: { type: 'string' },
+        detail: { type: 'string', description: 'Optional context shown under the question.' },
+        choices: {
+          type: 'array',
+          minItems: 2,
+          maxItems: 8,
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string' },
+              label: { type: 'string' },
+              description: { type: 'string' },
+              preview: { type: 'string', description: 'Optional markdown shown inside the card (a mini mockup, a code snippet, a bullet list).' },
+            },
+            required: ['id', 'label'],
+          },
+        },
+        timeoutSeconds: { type: 'number', description: 'How long to wait, default 180, max 900.' },
+      },
+      required: ['question', 'choices'],
+    },
+  },
+  {
     name: 'post_report',
     description:
       'Post a standup card when you finish a task: what you changed, test results, a short summary and risks. Cards are grouped by worktree and agent on the Standup board.',
@@ -123,7 +161,7 @@ const SourceZ = z.discriminatedUnion('type', [
 ]);
 const span = z.number().min(1).max(4).optional();
 const PlaceZ = z.object({
-  kind: z.enum(WIDGET_KINDS.filter((k) => k !== 'mcp-app') as [string, ...string[]]),
+  kind: z.enum(PLACEABLE as [string, ...string[]]),
   title: z.string().min(1),
   data: z.record(z.string(), z.unknown()),
   id: z.string().regex(/^[\w.-]+$/).optional(),
@@ -153,11 +191,27 @@ const ReportZ = z.object({
   risks: z.array(z.string()).optional(),
 });
 
+const AskZ = z.object({
+  question: z.string().min(1),
+  detail: z.string().optional(),
+  choices: z
+    .array(z.object({ id: z.string().min(1), label: z.string().min(1), description: z.string().optional(), preview: z.string().optional() }))
+    .min(2)
+    .max(8),
+  timeoutSeconds: z.number().positive().optional(),
+});
+
+export interface ToolExtra {
+  signal?: AbortSignal;
+  /** Called periodically while a blocking tool waits (used for MCP progress notifications). */
+  onWaiting?: (elapsedMs: number) => void;
+}
+
 const ok = (v: unknown): CallToolResult => ({ content: [{ type: 'text', text: JSON.stringify(v, null, 2) }] });
 const fail = (msg: string): CallToolResult => ({ content: [{ type: 'text', text: msg }], isError: true });
 
 /** Run one screen tool. Returns null if the name isn't a screen tool. */
-export async function callScreenTool(api: ScreenApi, name: string, args: unknown): Promise<CallToolResult | null> {
+export async function callScreenTool(api: ScreenApi, name: string, args: unknown, extra: ToolExtra = {}): Promise<CallToolResult | null> {
   try {
     switch (name) {
       case 'place_widget': {
@@ -183,6 +237,25 @@ export async function callScreenTool(api: ScreenApi, name: string, args: unknown
         return ok(await api.readCanvas());
       case 'remove_widget':
         return ok({ removed: await api.remove(IdZ.parse(args).id) });
+      case 'clear_canvas': {
+        const { undo } = z.object({ undo: z.boolean().optional() }).parse(args);
+        return ok(undo ? await api.undoClear() : { ...(await api.clear()), note: 'The human can press Undo on the canvas.' });
+      }
+      case 'ask_user': {
+        const a = AskZ.parse(args);
+        const started = Date.now();
+        const tick = extra.onWaiting ? setInterval(() => extra.onWaiting?.(Date.now() - started), 10_000) : undefined;
+        try {
+          const input: Parameters<ScreenApi['ask']>[0] = { question: a.question, choices: a.choices };
+          if (a.detail) input.detail = a.detail;
+          if (a.timeoutSeconds) input.timeoutMs = a.timeoutSeconds * 1000;
+          if (extra.signal) input.signal = extra.signal;
+          const r = await api.ask(input);
+          return ok(r.answered ? { answered: true, choice: r.choice } : { answered: false, reason: r.reason });
+        } finally {
+          if (tick) clearInterval(tick);
+        }
+      }
       case 'post_report': {
         const r = await api.postReport(ReportZ.parse(args) as never);
         return ok({ id: r.id, posted: true });
@@ -196,11 +269,25 @@ export async function callScreenTool(api: ScreenApi, name: string, args: unknown
   }
 }
 
+/** Wire abort + MCP progress notifications (keeps clients that reset timeouts on progress happy). */
+export function toolExtra(
+  progressToken: string | number | undefined,
+  extra: { signal: AbortSignal; sendNotification: (n: { method: 'notifications/progress'; params: { progressToken: string | number; progress: number; message?: string } }) => Promise<void> },
+): ToolExtra {
+  const out: ToolExtra = { signal: extra.signal };
+  if (progressToken !== undefined)
+    out.onWaiting = (ms) =>
+      void extra
+        .sendNotification({ method: 'notifications/progress', params: { progressToken, progress: Math.round(ms / 1000), message: 'waiting for the human on mcp-screen' } })
+        .catch(() => {});
+  return out;
+}
+
 export function createScreenServer(api: ScreenApi): Server {
   const server = new Server({ name: 'mcp-screen', version: VERSION }, { capabilities: { tools: {} } });
   server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: SCREEN_TOOLS }));
-  server.setRequestHandler(CallToolRequestSchema, async (req) => {
-    const res = await callScreenTool(api, req.params.name, req.params.arguments ?? {});
+  server.setRequestHandler(CallToolRequestSchema, async (req, extra) => {
+    const res = await callScreenTool(api, req.params.name, req.params.arguments ?? {}, toolExtra(req.params._meta?.progressToken, extra));
     return res ?? fail(`unknown tool ${req.params.name}`);
   });
   return server;

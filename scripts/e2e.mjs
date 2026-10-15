@@ -46,7 +46,7 @@ check('tools/list has screen tools + upstream tools', ['place_widget', 'update_w
 
 const URL_ = `http://127.0.0.1:${PORT}`;
 const browser = await chromium.launch();
-const ctx = await browser.newContext({
+const ctx = await browser.newContext({ acceptDownloads: true,
   viewport: { width: 1440, height: 900 },
   deviceScaleFactor: 2,
   ...(GIF ? { recordVideo: { dir: path.join(HOME, 'video'), size: { width: 1440, height: 900 } } } : {}),
@@ -214,12 +214,51 @@ for (const [agent, f] of edits) {
   await sleep(450);
 }
 await sleep(300);
-check('PostToolUse edits light up livemap nodes', (await page.locator('svg.map .node.hot').count()) >= 4, `${await page.locator('svg.map .node.hot').count()} hot nodes`);
+const hot = await page.locator('.node.edit, .node.read').count();
+check('PostToolUse edits light up livemap nodes', hot >= 4, `${hot} glowing nodes`);
 const arch = await call('read_widget', { id: 'arch' });
 check('livemap reports unmapped files to the agent', arch.unmappedFiles?.includes('docs/new-plugin.md'));
 await page.screenshot({ path: path.join(SHOTS, '4-livemap.png') });
 
-// ---- 6. back to canvas for the end of the video ----
+// ---- 5b. theatre: Read shows as a read (blue) glow + orb + caption ----
+hook({ hook_event_name: 'PostToolUse', tool_name: 'Read', session_id: 'reader', agent_type: 'reviewer', cwd: ROOT, tool_input: { file_path: path.join(ROOT, 'src/hub.ts') } });
+await sleep(1200);
+check('theatre: Read hook glows the module as a read, with an agent orb', (await page.locator('.node.read').count()) >= 1 && (await page.locator('.orb[data-name="reviewer"]').count()) === 1);
+check('theatre: caption names the file', /src\/hub\.ts/.test(await page.locator('.caption').innerText()));
+await page.screenshot({ path: path.join(SHOTS, '4b-theatre.png') });
+
+// ---- 6. ask_user: blocks until the human clicks a choice card ----
+await page.locator('.tab[data-tab="canvas"]').click();
+const asked = call('ask_user', { question: 'Which pricing layout should I build?', detail: 'Pick one and I will build it next.', timeoutSeconds: 60, choices: [
+  { id: 'tiers', label: 'Three tiers', description: 'Good / better / best', preview: '- Free · Pro · Team\n- annual toggle' },
+  { id: 'slider', label: 'Usage slider', description: 'Price scales with seats', preview: '- one card\n- live total' },
+  { id: 'table', label: 'Comparison table', description: 'Feature matrix', preview: '- 12 rows\n- sticky header' } ] });
+await page.locator('.card.question .choice').first().waitFor();
+await sleep(700);
+await page.locator('.card.question').screenshot({ path: path.join(SHOTS, '6-ask-user.png') });
+await page.locator('.choice[data-choice="slider"]').click();
+const answer = await asked;
+check('ask_user returns the clicked choice', answer.answered === true && answer.choice?.id === 'slider', JSON.stringify(answer));
+
+// ---- 7. share: PNG + self-contained HTML export ----
+const [png] = await Promise.all([page.waitForEvent('download'), page.evaluate(() => window.__mcpScreen.doExport('png'))]);
+const pngPath = path.join(HOME, 'export.png'); await png.saveAs(pngPath);
+check('Share → PNG export downloads a real PNG', fs.readFileSync(pngPath).subarray(1, 4).toString() === 'PNG');
+const [html] = await Promise.all([page.waitForEvent('download'), page.evaluate(() => window.__mcpScreen.doExport('html'))]);
+const htmlPath = path.join(HOME, 'export.html'); await html.saveAs(htmlPath);
+const htmlText = fs.readFileSync(htmlPath, 'utf8');
+check('Share → HTML export is self-contained (no scripts, CSP default-src none)', !/<script/i.test(htmlText) && /default-src 'none'/.test(htmlText) && /Which pricing layout/.test(htmlText));
+
+// ---- 8. clear_canvas + undo ----
+const before = (await call('read_canvas')).widgets.length;
+const cleared = await call('clear_canvas', {});
+check('clear_canvas empties the canvas', (await call('read_canvas')).widgets.length === 0, JSON.stringify(cleared));
+await sleep(500);
+await page.locator('.toast .btn').click();
+await sleep(800);
+check('UI Undo restores the cleared widgets', (await call('read_canvas')).widgets.length === before);
+
+// ---- 9. back to canvas for the end of the video ----
 await page.locator('.tab[data-tab="canvas"]').click();
 await sleep(2500);
 

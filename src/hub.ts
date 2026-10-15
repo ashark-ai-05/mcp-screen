@@ -6,7 +6,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { LocalApi } from './api.js';
 import { AllowList, describeSource, RefreshScheduler, type Runners } from './refresh.js';
-import { CanvasStore } from './store.js';
+import { CanvasStore, type AskInput } from './store.js';
+
+type AskInputBody = Omit<AskInput, 'signal'>;
 import type { ScreenEvent, Widget } from './types.js';
 
 export const VERSION = '0.1.0';
@@ -107,18 +109,19 @@ export async function startHub(opts: HubOptions = {}): Promise<Hub> {
         'content-type': 'text/html; charset=utf-8',
         'cache-control': 'no-store',
         'content-security-policy':
-          "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-src 'self'; connect-src 'self'; frame-ancestors 'none'",
+          "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; frame-src 'self'; connect-src 'self'; frame-ancestors 'none'",
         'x-content-type-options': 'nosniff',
         'referrer-policy': 'no-referrer',
       });
       res.end(html);
       return;
     }
-    if (req.method === 'GET' && /^\/[\w-]+\.(js|css|svg)$/.test(p)) {
+    if (req.method === 'GET' && /^\/(fonts\/)?[\w-]+\.(js|css|svg|woff2)$/.test(p)) {
       const file = path.join(PUBLIC_DIR, p.slice(1));
       if (!fs.existsSync(file)) throw new HttpError(404, 'not found');
-      const type = p.endsWith('.js') ? 'text/javascript' : p.endsWith('.css') ? 'text/css' : 'image/svg+xml';
-      res.writeHead(200, { 'content-type': `${type}; charset=utf-8`, 'x-content-type-options': 'nosniff' });
+      const ext = p.slice(p.lastIndexOf('.') + 1);
+      const type = { js: 'text/javascript; charset=utf-8', css: 'text/css; charset=utf-8', svg: 'image/svg+xml', woff2: 'font/woff2' }[ext];
+      res.writeHead(200, { 'content-type': type ?? 'application/octet-stream', 'x-content-type-options': 'nosniff', 'cache-control': ext === 'woff2' ? 'max-age=86400' : 'no-cache' });
       res.end(fs.readFileSync(file));
       return;
     }
@@ -161,8 +164,18 @@ export async function startHub(opts: HubOptions = {}): Promise<Hub> {
     if (req.method === 'POST' && p === '/api/widgets') return send(res, 200, { result: await api.place(body as never) });
     if (req.method === 'POST' && p === '/api/reports') return send(res, 200, { result: store.postReport(body as never) });
     if (req.method === 'POST' && p === '/api/file-events') return send(res, 200, { result: store.fileEvent(body as never) });
+    if (req.method === 'POST' && p === '/api/canvas/clear') return send(res, 200, { result: await api.clear() });
+    if (req.method === 'POST' && p === '/api/canvas/undo') return send(res, 200, { result: await api.undoClear() });
+    if (req.method === 'POST' && p === '/api/ask') {
+      const ctrl = new AbortController();
+      res.on('close', () => {
+        if (!res.writableFinished) ctrl.abort();
+      });
+      const result = await api.ask({ ...(body as AskInputBody), signal: ctrl.signal });
+      return send(res, 200, { result });
+    }
 
-    const m = /^\/api\/widgets\/([^/]+)(?:\/(selection|approve|deny|revoke|refresh|call))?$/.exec(p);
+    const m = /^\/api\/widgets\/([^/]+)(?:\/(selection|approve|deny|revoke|refresh|call|answer))?$/.exec(p);
     if (!m) throw new HttpError(404, 'not found');
     const id = decodeURIComponent(m[1] as string);
     const action = m[2];
@@ -173,6 +186,8 @@ export async function startHub(opts: HubOptions = {}): Promise<Hub> {
     }
     if (req.method !== 'POST') throw new HttpError(405, 'method not allowed');
     switch (action) {
+      case 'answer':
+        return send(res, 200, { result: store.answer(id, String((body as { choice?: unknown }).choice ?? '')) });
       case 'selection':
         return send(res, 200, { result: store.setSelection(id, (body as { selection?: unknown }).selection ?? null) });
       case 'approve':
@@ -201,6 +216,7 @@ export async function startHub(opts: HubOptions = {}): Promise<Hub> {
       widgets: store.list().map((w) => decorate(w.kind === 'livemap' ? { ...w, unmappedFiles: store.unmappedFor(w.id) } as Widget : w)),
       reports: store.listReports(),
       activity: store.recentActivity(),
+      canUndoClear: store.canUndoClear(),
     };
   }
 

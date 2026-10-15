@@ -36,9 +36,27 @@ const DEFAULT_SPAN: Partial<Record<WidgetKind, [number, number]>> = {
   livemap: [4, 3],
 };
 
+export interface AskInput {
+  question: string;
+  detail?: string;
+  choices: Array<{ id: string; label: string; description?: string; preview?: string }>;
+  title?: string;
+  timeoutMs?: number;
+  signal?: AbortSignal;
+}
+
+export type AskResult =
+  | { answered: true; choice: { id: string; label: string }; widgetId: string }
+  | { answered: false; reason: 'timeout' | 'cancelled' | 'removed'; widgetId: string };
+
+export const ASK_DEFAULT_TIMEOUT_MS = 180_000;
+export const ASK_MAX_TIMEOUT_MS = 900_000;
+
 export class CanvasStore {
   readonly bus = new EventBus();
   private widgets = new Map<string, Widget>();
+  private lastCleared: Widget[] | null = null;
+  private pendingAsks = new Map<string, (r: AskResult) => void>();
   private reports: Report[] = [];
   private unmapped = new Map<string, string[]>();
   private activity: Activity[] = [];
@@ -104,8 +122,106 @@ export class CanvasStore {
 
   remove(id: string): boolean {
     const ok = this.widgets.delete(id);
-    if (ok) this.bus.push({ type: 'remove', id });
+    if (ok) {
+      this.settleAsk(id, 'removed');
+      this.bus.push({ type: 'remove', id });
+    }
     return ok;
+  }
+
+  /** Remove every widget. The removed set is kept so `undoClear()` can bring it back. */
+  clear(): { removed: number } {
+    const all = this.list();
+    if (all.length === 0) return { removed: 0 };
+    for (const w of all) {
+      this.widgets.delete(w.id);
+      this.settleAsk(w.id, 'removed');
+      this.bus.push({ type: 'remove', id: w.id });
+    }
+    // Open questions can't be answered after an undo (their tool call already returned).
+    this.lastCleared = all.filter((w) => !(w.kind === 'question' && w.data.state === 'open'));
+    this.bus.push({ type: 'cleared', count: all.length, undoable: this.lastCleared.length > 0 });
+    return { removed: all.length };
+  }
+
+  canUndoClear(): boolean {
+    return !!this.lastCleared?.length;
+  }
+
+  /** Restore the widgets removed by the last clear (skipping ids that were reused since). */
+  undoClear(): Widget[] {
+    const back = (this.lastCleared ?? []).filter((w) => !this.widgets.has(w.id));
+    this.lastCleared = null;
+    for (const w of back) {
+      this.widgets.set(w.id, w);
+      this.emit(w);
+    }
+    this.bus.push({ type: 'restored', count: back.length });
+    return back;
+  }
+
+  /**
+   * Place a question card and wait for the human to click a choice.
+   * Resolves on answer, timeout, abort (the agent's tool call was cancelled) or removal.
+   */
+  ask(input: AskInput): { widget: Widget; result: Promise<AskResult> } {
+    const timeoutMs = Math.min(ASK_MAX_TIMEOUT_MS, Math.max(1000, input.timeoutMs ?? ASK_DEFAULT_TIMEOUT_MS));
+    const widget = this.place({
+      kind: 'question',
+      title: input.title ?? 'Your call',
+      w: input.choices.length > 3 ? 4 : Math.max(2, input.choices.length),
+      h: 2,
+      data: {
+        question: input.question,
+        ...(input.detail ? { detail: input.detail } : {}),
+        choices: input.choices,
+        state: 'open',
+        expiresAt: new Date(this.now().getTime() + timeoutMs).toISOString(),
+      },
+    });
+    const result = new Promise<AskResult>((resolve) => {
+      const timer = setTimeout(() => this.settleAsk(widget.id, 'timeout'), timeoutMs);
+      timer.unref?.();
+      const onAbort = (): void => this.settleAsk(widget.id, 'cancelled');
+      input.signal?.addEventListener('abort', onAbort, { once: true });
+      this.pendingAsks.set(widget.id, (r) => {
+        clearTimeout(timer);
+        input.signal?.removeEventListener('abort', onAbort);
+        resolve(r);
+      });
+      if (input.signal?.aborted) onAbort();
+    });
+    return { widget, result };
+  }
+
+  /** The human clicked a choice. */
+  answer(id: string, choiceId: string): Widget {
+    const w = this.require(id);
+    if (w.kind !== 'question') throw new Error('not a question widget');
+    if (w.data.state !== 'open') throw new Error(`question is already ${String(w.data.state)}`);
+    const choice = (w.data.choices as Array<{ id: string; label: string }>).find((c) => c.id === choiceId);
+    if (!choice) throw new Error(`no choice ${choiceId}`);
+    w.data = { ...w.data, state: 'answered', answer: { id: choice.id, label: choice.label, at: this.now().toISOString() } };
+    w.selection = { id: choice.id, label: choice.label };
+    w.updatedAt = this.now().toISOString();
+    this.emit(w);
+    const resolve = this.pendingAsks.get(id);
+    this.pendingAsks.delete(id);
+    resolve?.({ answered: true, choice: { id: choice.id, label: choice.label }, widgetId: id });
+    return w;
+  }
+
+  private settleAsk(id: string, reason: 'timeout' | 'cancelled' | 'removed'): void {
+    const resolve = this.pendingAsks.get(id);
+    if (!resolve) return;
+    this.pendingAsks.delete(id);
+    const w = this.widgets.get(id);
+    if (w && reason !== 'removed') {
+      w.data = { ...w.data, state: reason };
+      w.updatedAt = this.now().toISOString();
+      this.emit(w);
+    }
+    resolve({ answered: false, reason, widgetId: id });
   }
 
   get(id: string): Widget | undefined {
@@ -174,6 +290,7 @@ export class CanvasStore {
         agent: ev.agent,
         color: agentColor(ev.agent),
         path: rel,
+        action: ev.action ?? 'edit',
         at: ev.at ?? this.now().toISOString(),
       };
       this.activity.push(activity);

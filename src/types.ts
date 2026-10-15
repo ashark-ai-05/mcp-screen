@@ -7,6 +7,7 @@ export type WidgetKind =
   | 'text'
   | 'status-list'
   | 'mcp-app'
+  | 'question'
   | 'livemap';
 
 /** Where a live widget pulls fresh data from. Refreshed server-side, no LLM involved. */
@@ -68,8 +69,12 @@ export interface FileEvent {
   cwd?: string;
   agent: string;
   tool?: string;
+  /** What the agent did to the file. Defaults to 'edit'. */
+  action?: FileAction;
   at?: string;
 }
+
+export type FileAction = 'read' | 'edit' | 'create';
 
 export interface Activity {
   widgetId: string;
@@ -77,6 +82,7 @@ export interface Activity {
   agent: string;
   color: string;
   path: string;
+  action: FileAction;
   at: string;
 }
 
@@ -84,4 +90,6 @@ export type ScreenEvent =
   | { type: 'widget'; widget: Widget }
   | { type: 'remove'; id: string }
   | { type: 'report'; report: Report }
-  | { type: 'activity'; activity: Activity };
+  | { type: 'activity'; activity: Activity }
+  | { type: 'cleared'; count: number; undoable: boolean }
+  | { type: 'restored'; count: number };

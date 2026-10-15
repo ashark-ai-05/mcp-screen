@@ -12,7 +12,7 @@ import {
 import type { ScreenApi } from './api.js';
 import type { Hub } from './hub.js';
 import { VERSION } from './hub.js';
-import { callScreenTool, SCREEN_TOOLS } from './mcp.js';
+import { callScreenTool, SCREEN_TOOLS, toolExtra, type ToolExtra } from './mcp.js';
 
 export const UI_MIME = 'text/html;profile=mcp-app';
 
@@ -60,9 +60,9 @@ export class WrapProxy {
     return [...tools, ...ours];
   }
 
-  async callTool(name: string, args: Record<string, unknown>): Promise<CallToolResult> {
+  async callTool(name: string, args: Record<string, unknown>, extra: ToolExtra = {}): Promise<CallToolResult> {
     if (!this.tools.has(name)) {
-      const screen = await callScreenTool(this.api, name, args);
+      const screen = await callScreenTool(this.api, name, args, extra);
       if (screen) return screen;
       await this.listTools();
     }
@@ -112,7 +112,9 @@ export async function runWrap(command: string[], api: ScreenApi, hub: Hub | null
     { capabilities: { tools: {}, ...(caps.resources ? { resources: {} } : {}) } },
   );
   server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: await proxy.listTools() }));
-  server.setRequestHandler(CallToolRequestSchema, async (req) => proxy.callTool(req.params.name, req.params.arguments ?? {}));
+  server.setRequestHandler(CallToolRequestSchema, async (req, extra) =>
+    proxy.callTool(req.params.name, req.params.arguments ?? {}, toolExtra(req.params._meta?.progressToken, extra)),
+  );
   if (caps.resources) {
     server.setRequestHandler(ListResourcesRequestSchema, async (req) => client.listResources(req.params));
     server.setRequestHandler(ReadResourceRequestSchema, async (req) => client.readResource(req.params));

@@ -94,7 +94,9 @@ describe('standup: hooks', () => {
     expect(agentName({ hook_event_name: 'SubagentStop', session_id: 'ffeedd00' })).toBe('subagent-ffeedd');
     expect(agentName({ hook_event_name: 'SubagentStop', agent_type: 'test-writer' })).toBe('test-writer');
     expect(buildFromHook({ hook_event_name: 'PostToolUse', tool_name: 'Edit', cwd: '/r', session_id: 's1', tool_input: { file_path: '/r/src/a.ts' } }).fileEvent)
-      .toEqual({ path: '/r/src/a.ts', cwd: '/r', agent: 'claude-s1', tool: 'Edit' });
+      .toEqual({ path: '/r/src/a.ts', cwd: '/r', agent: 'claude-s1', tool: 'Edit', action: 'edit' });
+    expect(buildFromHook({ hook_event_name: 'PostToolUse', tool_name: 'Read', cwd: '/r', tool_input: { file_path: '/r/a.ts' } }).fileEvent?.action).toBe('read');
+    expect(buildFromHook({ hook_event_name: 'PostToolUse', tool_name: 'Write', cwd: '/r', tool_input: { file_path: '/r/new.ts' } }).fileEvent?.action).toBe('create');
     expect(buildFromHook({ hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_input: {} })).toEqual({});
   });
 
@@ -106,5 +108,9 @@ describe('standup: hooks', () => {
     const stop = (once.hooks as Record<string, unknown[]>).Stop!;
     expect(stop).toHaveLength(2);
     expect(once.model).toBe('x');
+    const old = { hooks: { PostToolUse: [{ matcher: 'Write|Edit', hooks: [{ type: 'command', command: 'npx -y mcp-screen hook' }] }] } };
+    const upgraded = mergeHooks(old).hooks as Record<string, Array<{ matcher: string }>>;
+    expect(upgraded.PostToolUse).toHaveLength(1);
+    expect(upgraded.PostToolUse![0]!.matcher).toBe('Read|Write|Edit|MultiEdit|NotebookEdit');
   });
 });

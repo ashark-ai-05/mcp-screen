@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Records screenshots/demo.gif + hero.png: a terminal pane on the left (a faithful
-// recreation of the Claude Code UI, text typed by this script) and the REAL canvas on the right.
+// Records the ~20 s launch demo (screenshots/demo.gif + demo.mp4 + hero.png): a SCRIPTED terminal
+// pane on the left (labelled as such on screen; text typed by this script) and the REAL canvas on the right.
 // Every widget on the canvas comes from a real MCP tool call against a real mcp-screen process,
 // and the terminal shows the real tool results.
 import { spawnSync } from 'node:child_process';
@@ -65,7 +65,7 @@ await page.addStyleTag({ content: `
 await page.evaluate(() => {
   const t = document.createElement('div');
   t.id = 'term';
-  t.innerHTML = `<div class="bar"><i></i><i></i><i></i></div><div class="box">✻ Claude Code<br><span>~/shop · screen MCP connected</span></div><div id="lines"></div><div class="hint">? for shortcuts</div><div class="input"><span id="typed"></span><span class="caret"></span></div>`;
+  t.innerHTML = `<div class="bar"><i></i><i></i><i></i></div><div class="box">✻ scripted replay<br><span>real MCP tool calls · ~/shop</span></div><div id="lines"></div><div class="hint">? for shortcuts</div><div class="input"><span id="typed"></span><span class="caret"></span></div>`;
   document.body.append(t);
   const c = document.createElement('div'); c.id = 'cursor'; document.body.append(c);
 });
@@ -103,51 +103,55 @@ const grabber = (async () => {
   }
 })();
 await sleep(500);
-// --- scene 1: prompt -> chart + table land
-await type('compare our last 30 days of CI failures');
-await line('dot', 'Pulling CI history and putting it on your screen.');
-await sleep(300);
+// --- scene 1: a dashboard lands
+await type('how is CI doing this month?');
+await sleep(150);
 const labels = Array.from({ length: 30 }, (_, i) => { const d = new Date(2026, 8, 16 + i); return `${d.getMonth() + 1}/${d.getDate()}`; });
 const values = [2,3,1,4,2,0,1,3,5,2,1,6,3,2,0,1,2,8,4,3,1,0,2,9,3,2,4,1,2,3];
-await line('tool', '<b>screen - place_widget</b> (MCP)(kind: "chart", title: "CI failures · 30 days")');
-const r1 = await call('place_widget', { id: 'ci', kind: 'chart', title: 'CI failures · last 30 days', data: { type: 'bar', labels, values, linkTo: 'runs' }, w: 4, h: 2 });
-await line('res', esc(`Placed ${JSON.parse(r1).id} on ${JSON.parse(r1).url}`));
-await sleep(500);
-const jobs = ['e2e · checkout.spec.ts', 'unit · auth.test.ts', 'e2e · search.spec.ts', 'lint', 'build · tsc'];
-const rows = [];
-labels.forEach((d, i) => { for (let k = 0; k < Math.min(values[i], 3); k++) rows.push([d, jobs[(i * 3 + k) % 5], k ? 'real' : 'flaky', `${2 + ((i + k) % 7)}m`]); });
-await line('tool', '<b>screen - place_widget</b> (MCP)(kind: "table", title: "Failed runs")');
-await call('place_widget', { id: 'runs', kind: 'table', title: 'Failed runs (click a bar to filter)', data: { columns: ['day', 'job', 'kind', 'duration'], rows }, w: 3, h: 2 });
-await call('place_widget', { id: 'rate', kind: 'metric', title: 'Failure rate', data: { value: '6.8%', label: 'of 1,204 runs', delta: -1.2 }, w: 1, h: 2 });
-await line('res', 'Placed runs, rate');
-await sleep(700);
+await line('tool', '<b>screen - place_widget</b> ×3 (MCP)');
+await call('place_widget', { id: 'ci', kind: 'chart', title: 'CI failures · last 30 days', data: { type: 'bar', labels, values }, w: 3, h: 2 });
+await sleep(250);
+await call('place_widget', { id: 'rate', kind: 'metric', title: 'Failure rate', data: { value: '6.8%', label: 'of 1,204 runs', delta: -1.2 }, w: 1, h: 1 });
+await sleep(250);
+await call('place_widget', { id: 'top', kind: 'markdown', title: 'Top flake', data: { markdown: '**checkout.spec.ts**\n\n9 of 40 runs, flaky' }, w: 1, h: 1 });
+await line('res', 'Placed ci, rate, top');
+await sleep(1000);
 
-// --- scene 2: human clicks the tallest bar, agent reads it
-const bar = await cursorTo('svg.chart .bar', 23);
-await page.evaluate(() => { const c = document.getElementById('cursor'); c.classList.remove('click'); void c.offsetWidth; c.classList.add('click'); });
-await page.mouse.click(bar.x + bar.width / 2, bar.y + bar.height / 2);
+// --- scene 2: a visual question; the human clicks, the agent gets the answer
+await type('fix it. you choose, but ask me first');
+await line('tool', '<b>screen - ask_user</b> (MCP)(question: "How should I fix checkout.spec.ts?")');
+const asked = call('ask_user', { question: 'How should I fix checkout.spec.ts?', detail: 'Waiting for your click.', choices: [
+  { id: 'wait', label: 'Await the network', description: 'Replace sleeps with waitForResponse', preview: '- 3 lines\n- lowest risk' },
+  { id: 'mock', label: 'Mock the coupon API', description: 'Deterministic fixture', preview: '- new fixture\n- faster test' },
+  { id: 'quarantine', label: 'Quarantine it', description: 'Skip in CI, file a ticket', preview: '- 1 line\n- hides the bug' } ] });
+await page.locator('.card.question .choice').first().waitFor();
 await sleep(900);
-await type('which day did I click? why?');
-await line('tool', '<b>screen - read_widget</b> (MCP)(id: "ci")');
-const sel = JSON.parse(await call('read_widget', { id: 'ci' })).selection;
-await line('res', esc(`selection: { label: "${sel.label}", value: ${sel.value} }`));
-await line('dot', esc(`You picked ${sel.label}: ${sel.value} failures, mostly e2e checkout.spec.ts (flaky).`));
-await sleep(1100);
+const ch = await cursorTo('.choice[data-choice="wait"]');
+await page.evaluate(() => { const c = document.getElementById('cursor'); c.classList.remove('click'); void c.offsetWidth; c.classList.add('click'); });
+await page.mouse.click(ch.x + ch.width / 2, ch.y + ch.height / 2);
+const ans = JSON.parse(await asked);
+await line('res', esc(`answered: "${ans.choice.label}"`));
+await sleep(900);
 await page.screenshot({ path: path.join(SHOTS, 'hero.png'), scale: 'device' });
-
-// --- scene 3 (end card): an MCP App that the terminal can only show as JSON
-await type('show the flaky tests app');
-await line('tool', '<b>flaky - flaky_tests</b> (MCP)(days: 30)');
-await call('remove_widget', { id: 'rate' });
-await call('update_widget', { id: 'ci', h: 1 });
-await call('update_widget', { id: 'runs', w: 2 });
 await page.evaluate(() => { document.getElementById('cursor').style.display = 'none'; });
-const r3 = await call('flaky_tests', { days: 30 });
-await line('res', esc('{"days":30,"flaky":[{"test":"checkout › applies coupon","fails":9,…'));
-await line('res', esc(r3.split('\n').pop().replace(/ on http\S+/, ' on the screen')));
-await page.frameLocator('iframe.app-frame').locator('text=checkout › applies coupon').waitFor();
-await sleep(2200);
 
+// --- scene 3: agent theatre: real PostToolUse hook payloads animate onto the livemap
+await line('tool', '<b>screen - place_widget</b> (MCP)(kind: "livemap", title: "shop")');
+await call('place_widget', { id: 'arch', kind: 'livemap', title: 'shop architecture', data: { root: '/shop', nodes: [
+  { id: 'web', label: 'Web app', globs: ['web/**'] }, { id: 'api', label: 'API', globs: ['api/**'] }, { id: 'auth', label: 'Auth', globs: ['api/auth/**'] },
+  { id: 'db', label: 'Database', globs: ['db/**'] }, { id: 'e2e', label: 'E2E tests', globs: ['e2e/**'] } ],
+  edges: [{ from: 'web', to: 'api' }, { from: 'api', to: 'auth' }, { from: 'api', to: 'db' }, { from: 'e2e', to: 'web' }] } });
+await page.locator('.tab[data-tab="livemap"]').click();
+await sleep(900);
+const hook = (agent, tool, file) => spawnSync(process.execPath, [path.join(ROOT, 'dist/cli.js'), 'hook'], { env, input: JSON.stringify({ hook_event_name: 'PostToolUse', tool_name: tool, session_id: agent, agent_type: agent, cwd: '/shop', tool_input: { file_path: `/shop/${file}` } }) });
+const acts = [['claude', 'Read', 'e2e/checkout.spec.ts', 'Read'], ['claude', 'Read', 'web/pages/checkout.tsx', 'Read'], ['test-writer', 'Read', 'api/coupons.ts', 'Read'],
+  ['claude', 'Edit', 'e2e/checkout.spec.ts', 'Update'], ['test-writer', 'Write', 'e2e/fixtures/coupon.json', 'Write'], ['claude', 'Edit', 'api/coupons.ts', 'Update']];
+for (const [agent, tool, file, verb] of acts) {
+  hook(agent, tool, file);
+  await line('tool', esc(`${verb}(${file})`) + (agent === 'claude' ? '' : ` <span style="color:#8a8a8a">· ${agent}</span>`));
+  await sleep(750);
+}
+await sleep(1200);
 recording = false;
 await grabber;
 await ctx.close();
