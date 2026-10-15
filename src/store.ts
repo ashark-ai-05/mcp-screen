@@ -104,6 +104,7 @@ export class CanvasStore {
   private pendingAsks = new Map<string, (r: AskResult | FormResult) => void>();
   private annotations = new Map<string, Annotation>();
   private lastClearedNotes: Annotation[] = [];
+  private lastRemovedAnnotation: Annotation | null = null;
   private reports: Report[] = [];
   private unmapped = new Map<string, string[]>();
   private activity: Activity[] = [];
@@ -255,9 +256,30 @@ export class CanvasStore {
   }
 
   removeAnnotation(id: string): boolean {
+    const a = this.annotations.get(id);
     const ok = this.annotations.delete(id);
-    if (ok) this.bus.push({ type: 'annotation-remove', id });
+    if (ok && a) {
+      this.lastRemovedAnnotation = a;
+      this.bus.push({ type: 'annotation-remove', id, undoable: true });
+    }
     return ok;
+  }
+
+  /** Bring back the last singly-deleted annotation (not from clear_canvas). */
+  undoAnnotation(): Annotation | null {
+    const a = this.lastRemovedAnnotation;
+    this.lastRemovedAnnotation = null;
+    if (!a || this.annotations.has(a.id)) return null;
+    if (a.target && !this.widgets.has(a.target.widgetId)) {
+      // widget gone: still restore the mark, drop the stale target
+      const { target: _t, ...rest } = a;
+      this.annotations.set(rest.id, rest as Annotation);
+      this.bus.push({ type: 'annotation-restored', annotation: rest as Annotation });
+      return rest as Annotation;
+    }
+    this.annotations.set(a.id, a);
+    this.bus.push({ type: 'annotation-restored', annotation: a });
+    return a;
   }
 
   listAnnotations(): Annotation[] {
@@ -317,6 +339,7 @@ export class CanvasStore {
   clear(): { removed: number } {
     const all = this.list();
     if (all.length === 0 && this.annotations.size === 0) return { removed: 0 };
+    this.lastRemovedAnnotation = null;
     this.lastClearedNotes = this.listAnnotations();
     for (const a of this.lastClearedNotes) this.removeAnnotation(a.id);
     for (const w of all) {

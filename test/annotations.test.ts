@@ -115,3 +115,20 @@ describe('annotation threads', () => {
     }
   });
 });
+
+describe('undo a single deleted annotation', () => {
+  it('removeAnnotation can be undone once; clear wipes that undo', () => {
+    const s = setup();
+    s.place({ id: 'c', kind: 'chart', title: 'c', data: { labels: ['a'], values: [1] }, x: 0, y: 0, w: 2, h: 2 });
+    const a = s.annotate({ kind: 'note', points: [[10, 10]], text: 'keep me' });
+    expect(s.removeAnnotation(a.id)).toBe(true);
+    expect(s.listAnnotations()).toHaveLength(0);
+    const back = s.undoAnnotation();
+    expect(back?.id).toBe(a.id);
+    expect(s.listAnnotations()[0]?.text).toBe('keep me');
+    expect(s.undoAnnotation()).toBeNull();
+    s.removeAnnotation(a.id);
+    s.clear();
+    expect(s.undoAnnotation()).toBeNull(); // clear consumed the single-delete undo
+  });
+});

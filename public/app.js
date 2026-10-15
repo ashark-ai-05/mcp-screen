@@ -338,7 +338,7 @@
         h('ol', { class: 'steps' },
           h('li', {}, h('b', {}, '1'), h('span', {}, 'The agent places widgets: charts, diffs, plans, flows, logs, maps…')),
           h('li', {}, h('b', {}, '2'), h('span', {}, 'You circle a bar, long-press a row, or leave a sticky note — the agent reads exactly what you pointed at')),
-          h('li', {}, h('b', {}, '3'), h('span', {}, 'The agent reads exactly what you pointed at'))),
+          h('li', {}, h('b', {}, '3'), h('span', {}, 'The agent reads exactly what you pointed at — with ', h('code', {}, 'install-hooks'), ' it is reminded on every prompt'))),
         h('div', { class: 'empty-actions' },
           h('button', { class: 'btn accent', id: 'sample-btn', title: 'Places a few example widgets so you can try the canvas. No agent involved; Clear removes them.', onclick: () => loadSample() }, 'Try a sample canvas'),
           h('button', { class: 'btn ghost', onclick: () => shortcuts(true) }, 'Shortcuts ', h('kbd', {}, '?'))));
@@ -813,6 +813,11 @@
       } else if (ev.type === 'annotation-remove') {
         state.annotations.delete(ev.id);
         canvas.renderAnnotations();
+        if (ev.undoable) toast('Note removed', { label: 'Undo', run: () => api('POST', '/api/annotations/undo') }, 8000);
+      } else if (ev.type === 'annotation-restored') {
+        state.annotations.set(ev.annotation.id, ev.annotation);
+        canvas.renderAnnotations();
+        toast('Note restored', null, 2500);
       } else if (ev.type === 'canvases') {
         state.canvases = ev.canvases; renderCanvasSwitch();
       } else if (ev.type === 'canvas-switch') {

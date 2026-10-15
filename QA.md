@@ -152,3 +152,21 @@ Load average 7.7 / 7.8 / 10.0.
 **Perf (best of 3, load avg ~4.6/2.8/2.8):** first paint 56 ms · place median 5 ms · pan@100 1.70 ms/frame · pan@fit 2.58 · zoom 2.84 · CLS 0.0004 · gzip 52.1 KB · misses [].
 
 **Media:** `screenshots/7-showcase.png` (thread bubble), `screenshots/7b-full-canvas-export.png`, `screenshots/9-canvas-switcher.png`, `screenshots/hero.gif` (3.7 MB).
+
+
+## Round 7-8 (2026-10-16, Australia/Melbourne)
+
+**Shipped**
+- Claude Code UserPromptSubmit / SessionStart hooks inject pending notes via hookSpecificOutput.additionalContext.
+- Long-press (touch) / Alt+click opens the sticky-note editor aimed at that data point (canvas.quickAsk).
+- Share filenames include the project slug; Copy link uses #canvas=<id>; hash opens that canvas on load.
+- SECURITY.md updated for canvases/ and hook injection.
+
+**Tests:** unit 107, e2e 51, ux 42.
+
+
+## Round 9 (2026-10-16, Australia/Melbourne)
+
+**Shipped:** undo for a single deleted annotation (toast + POST /api/annotations/undo); empty-state mentions install-hooks; docs catch-up.
+
+**Tests:** unit 108+, e2e 52.

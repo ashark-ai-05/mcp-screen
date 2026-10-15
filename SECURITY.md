@@ -48,7 +48,7 @@ A widget can carry a `source` (a command, URL or MCP tool) that the server re-ru
 - **URL images** (`image` with `url`): only `https:` and `data:image/` URLs are accepted. The page CSP allows `img-src https:` for this, so **your browser fetches the URL directly and that host sees your IP address and the request time**. Nothing else on the page loads from the network.
 - **Maps** are fully offline: the coastlines are a bundled 44 KB Natural Earth 1:110m file (`public/world-110m.json`, public domain; see `public/LICENSE-world-atlas.txt`). There are no tiles, API keys or network requests.
 - **Diagrams** use a built-in parser for a subset of Mermaid flowcharts. Mermaid itself (which needs `eval`) is not bundled. Labels render as SVG text, never as HTML.
-- **Annotations** (your arrows, circles, highlights and notes) are stored only in the hub's memory and are readable by any agent connected to the canvas. Don't write secrets in notes. Text is rendered with `textContent`.
+- **Annotations** (your arrows, circles, highlights, notes and reply threads) are readable by any agent connected to the canvas and are saved with the canvas on disk. Don't write secrets in notes. Text is rendered with `textContent`. With `install-hooks`, pending notes are also injected into Claude Code's context on each prompt (`UserPromptSubmit` / `SessionStart`) as `additionalContext` — only the question text, target title and id, never file contents.
 - **Forms** (`ask_form`): values are checked against the field definitions on the server before the agent sees them. There is no MCP tool that submits a form.
 
 ## What is stored on disk
@@ -56,7 +56,8 @@ A widget can carry a `source` (a command, URL or MCP tool) that the server re-ru
 `~/.mcp-screen/` (or `MCP_SCREEN_HOME`) holds:
 - `hub.json`: port and token, mode 0600, removed on exit.
 - `allowlist.json`: approved live sources.
-- `canvas.json`: the canvas, mode 0600, written atomically. It contains your widgets' data and your annotations, so anything an agent put on the canvas is now on disk too. Set `MCP_SCREEN_NO_PERSIST=1` to keep the canvas in memory only.
+- `canvases/<id>.json`: one file per named project canvas (legacy `canvas.json` is migrated), mode 0600, written atomically. Each file holds that project's widgets and annotations. Set `MCP_SCREEN_NO_PERSIST=1` to keep canvases in memory only.
+- `canvases/index.json`: which canvas is active and the list of names.
 
 On start, every saved widget goes back through the same validation as `place_widget`: image paths are re-checked, and a saved command source still needs the allow-list before it runs. A hand-edited file can't add anything the tools would reject. Open questions, open forms and MCP App frames are never saved.
 

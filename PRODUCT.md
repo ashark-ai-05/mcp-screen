@@ -106,5 +106,25 @@ A running critique, written as the product owner before each round of work. Shor
 - Touch: long-press / Alt+click a `[data-pt]` to leave a note with that data point.
 - Share: filenames include the project slug; **Copy link** → `#canvas=<id>` localhost URL.
 
-## Round 8 (planned while polishing)
-Tightening README, shortcuts, and any remaining first-run friction after Round 7.
+## Round 8 (2026-10-16)
+
+**Critique after Round 7.** The three launch blockers from Round 6 are closed. Remaining friction is polish:
+
+1. Tap-to-note used `window.prompt` (ugly on desktop, broken-feeling on iOS).
+2. SECURITY still described a single `canvas.json` and in-memory-only annotations.
+3. Empty state / sample tips didn't mention long-press.
+
+**This round:** inline sticky-note editor for tap/long-press; SECURITY + empty-state/sample copy; shortcuts list long-press.
+
+**Next highest-impact:**
+1. Undo for a single annotation delete (today only Clear is undoable).
+2. Optional OS notification when a new note arrives while the tab is in the background.
+3. A clearer empty-state path from "sample canvas" to "install hooks so the agent sees your notes".
+
+## Round 9 (2026-10-16)
+
+**Who it's for:** people who invest in notes on the canvas. Deleting one by accident with no undo felt hostile next to Clear's Undo.
+
+**This round:** single-annotation undo (toast + `POST /api/annotations/undo`); SECURITY/PRODUCT/QA catch-up.
+
+**Next:** OS notification for background notes; empty-state CTA for `install-hooks`.

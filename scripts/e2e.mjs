@@ -478,6 +478,14 @@ const link = await page.evaluate(() => window.McpScreenExport.canvasLink());
 const curCanvas = (await call('read_canvas')).canvas;
 check('Share → Copy link names this project canvas in the hash', /#canvas=/.test(link) && link.includes(encodeURIComponent(curCanvas)), link);
 
+// ---- 8e. undo a single deleted annotation ----
+const doomed = (await call('read_widget', { id: 'long' })).annotations.find((a) => a.text === 'why this row?');
+await page.locator(`.note[data-ann="${doomed.id}"] .x, .ann-label[data-ann="${doomed.id}"] .ann-x`).first().click();
+await page.locator('.toast .btn').filter({ hasText: 'Undo' }).waitFor({ timeout: 3000 });
+await page.locator('.toast .btn').filter({ hasText: 'Undo' }).click();
+await sleep(500);
+check('Undo brings back a singly-deleted annotation', ((await call('read_widget', { id: 'long' })).annotations || []).some((a) => a.id === doomed.id && a.text === 'why this row?'));
+
 // ---- 9. back to canvas for the end of the video ----
 await page.locator('.tab[data-tab="canvas"]').click();
 await sleep(2500);
