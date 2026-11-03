@@ -652,7 +652,7 @@
           const rect = f.iframe.getBoundingClientRect();
           return reply({
             protocolVersion: PROTOCOL,
-            hostInfo: { name: 'mcp-screen', version: '0.1.0' },
+            hostInfo: { name: 'mcp-screen', version: '0.1.1' },
             hostCapabilities: { openLinks: {}, serverTools: {}, serverResources: {}, logging: {} },
             hostContext: {
               theme: 'light', displayMode: 'inline', availableDisplayModes: ['inline'], platform: 'desktop',

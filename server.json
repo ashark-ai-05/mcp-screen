@@ -1,0 +1,19 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.ashark-ai-05/mcp-screen",
+  "title": "mcp-screen",
+  "description": "A screen for terminal agents: a local canvas of charts, diffs, diagrams and MCP Apps to annotate.",
+  "repository": {
+    "url": "https://github.com/ashark-ai-05/mcp-screen",
+    "source": "github"
+  },
+  "version": "0.1.1",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "mcp-screen",
+      "version": "0.1.1",
+      "transport": { "type": "stdio" }
+    }
+  ]
+}

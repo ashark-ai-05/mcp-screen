@@ -14,7 +14,7 @@ type AskInputBody = Omit<AskInput, 'signal'>;
 type FormInputBody = Omit<FormInput, 'signal'>;
 import type { ScreenEvent, Widget } from './types.js';
 
-export const VERSION = '0.1.0';
+export const VERSION = '0.1.1';
 const PUBLIC_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'public');
 
 export function screenHome(): string {
