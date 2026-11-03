@@ -6,7 +6,7 @@
 
 An infinite canvas next to your terminal. Your agent puts charts, diffs, flows, logs, plans and maps on it. You circle the bar that looks wrong and type "why?", and the agent reads exactly what you pointed at. Local, one command, no API keys.
 
-[![CI](https://github.com/ashark-ai-05/mcp-screen/actions/workflows/ci.yml/badge.svg)](https://github.com/ashark-ai-05/mcp-screen/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/license-MIT-7c9cff.svg)](LICENSE) [![MCP server](https://img.shields.io/badge/MCP-server-7c6cff.svg)](https://modelcontextprotocol.io) [![MCP Apps](https://img.shields.io/badge/MCP%20Apps-supported-a5b8ff.svg)](https://github.com/modelcontextprotocol/ext-apps) [![Node ≥ 20](https://img.shields.io/badge/node-%E2%89%A520-3c873a.svg)](package.json)
+[![npm](https://img.shields.io/npm/v/mcp-screen.svg?color=7c9cff)](https://www.npmjs.com/package/mcp-screen) [![npm downloads](https://img.shields.io/npm/dm/mcp-screen.svg?color=7c9cff)](https://www.npmjs.com/package/mcp-screen) [![CI](https://github.com/ashark-ai-05/mcp-screen/actions/workflows/ci.yml/badge.svg)](https://github.com/ashark-ai-05/mcp-screen/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/license-MIT-7c9cff.svg)](LICENSE) [![MCP server](https://img.shields.io/badge/MCP-server-7c6cff.svg)](https://modelcontextprotocol.io) [![MCP Apps](https://img.shields.io/badge/MCP%20Apps-supported-a5b8ff.svg)](https://github.com/modelcontextprotocol/ext-apps) [![Node ≥ 20](https://img.shields.io/badge/node-%E2%89%A520-3c873a.svg)](package.json)
 
 ```bash
 claude mcp add screen -- npx mcp-screen
@@ -171,13 +171,14 @@ Gemini CLI disables MCP servers in folders you haven't trusted, so trust the pro
 | `reply_annotation` | Answer (or follow up on) a human's note/circle. The reply appears as a thread bubble next to their mark. |
 | `reply_oldest_pending` | One-click: answer the oldest unanswered note (optional `canvas`). |
 
-With `npx mcp-screen install-hooks --write`, Claude Code also gets a `UserPromptSubmit` / `SessionStart` hook: when notes are waiting, each prompt injects them as `additionalContext` so the agent can call `reply_annotation` without being asked again.
 | `remove_widget` | Remove one widget. |
 | `clear_canvas` | Remove everything (`undo: true` brings it back). |
 | `ask_user` | Show 2–8 choice cards and wait for your click; returns the choice, or `answered: false` with a reason. |
 | `ask_form` | Show a small form (text, textarea, number, slider, select, checkbox) and wait for Submit; values are validated before the agent gets them. |
 | `tidy_canvas` | Re-pack all widgets into a neat grid (same as the **Tidy up** button). |
 | `post_report` | Add a card to the standup board. |
+
+With `npx mcp-screen install-hooks --write`, Claude Code also gets a `UserPromptSubmit` / `SessionStart` hook: when notes are waiting, each prompt injects them as `additionalContext` so the agent can call `reply_annotation` without being asked again.
 
 | kind | data |
 | --- | --- |
@@ -276,8 +277,6 @@ npm run soak            # 25 clear/undo/re-place cycles through the UI; DOM + he
 npm run perf            # performance budgets with 120 widgets (see QA.md)
 npm run interop         # renders the official ext-apps basic-server-vanillajs example through wrap
 ```
-
-The design reuses pieces of [opencanvas](https://github.com/ashark-ai-05/opencanvas): the fan-out event bus, the widget-registry idea (kind → schema → renderer) and the null-origin plugin sandbox. It leaves out tldraw for a lighter grid canvas and a zero-build browser client.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). The design reuses pieces of [opencanvas](https://github.com/ashark-ai-05/opencanvas): the fan-out event bus, the widget-registry idea (kind → schema → renderer) and the null-origin plugin sandbox. It leaves out tldraw for a lighter grid canvas and a zero-build browser client.
 

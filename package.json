@@ -1,7 +1,8 @@
 {
   "name": "mcp-screen",
-  "version": "0.1.0",
-  "description": "A screen for terminal agents: MCP Apps, live widgets, a standup board and a live architecture map for Claude Code, Codex and opencode.",
+  "version": "0.1.1",
+  "mcpName": "io.github.ashark-ai-05/mcp-screen",
+  "description": "MCP server that gives terminal agents a screen: an infinite canvas of charts, diffs, diagrams, logs and MCP Apps next to Claude Code, Codex, Cursor, Gemini CLI, Amp and opencode. Circle anything to ask the agent about it.",
   "main": "dist/cli.js",
   "scripts": {
     "build": "tsc -p . && chmod +x dist/cli.js",
@@ -18,13 +19,25 @@
   },
   "keywords": [
     "mcp",
+    "mcp-server",
+    "model-context-protocol",
     "mcp-apps",
+    "claude",
     "claude-code",
     "codex",
+    "cursor",
+    "gemini-cli",
     "opencode",
+    "amp",
+    "ai-agents",
+    "coding-agent",
     "canvas",
     "widgets",
-    "agents"
+    "visualization",
+    "dashboard",
+    "charts",
+    "annotations",
+    "human-in-the-loop"
   ],
   "author": "Krunal Ashar",
   "license": "MIT",
@@ -57,5 +70,9 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/ashark-ai-05/mcp-screen"
+  },
+  "homepage": "https://github.com/ashark-ai-05/mcp-screen#readme",
+  "bugs": {
+    "url": "https://github.com/ashark-ai-05/mcp-screen/issues"
   }
 }
